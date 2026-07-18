@@ -1,0 +1,30 @@
+*.RData
+*.Rhistory
+*.DS_Store
+*.txt
+*.pdf
+*.Rproj
+*.csv
+.env
+
+# generated outputs and root links
+/results
+/images
+/logs
+/queue
+/data/*
+/build
+/tmp
+/.fdapde-cpp
+/libraries
+/cpp/ipopt.opt
+/cpp/*/fit_model*
+/.idea/
+HANDOFF*.md
+
+# exceptions
+!/data/mesh/
+!/data/mesh/**
+!/data/local/
+!/data/local/.gitkeep
+.Rproj.user
