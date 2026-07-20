@@ -25,7 +25,8 @@ Historical simulation suites are intentionally not migrated here.
 - fdaPDE-cpp branch: `develop_fPLS`
 - Expected outer commit: `ecbf23ef37571174c438ab68c3d21d7ecd5cf18f`
 - Expected core gitlink: `1b75249a7b49ccee72cb94207a9dc5daaa21848c`
-- Clean local reference checkout: `/Users/pietrodonelli/Documents/University/projects/fPLS/fPLS-simulation-study/libraries/fdaPDE-cpp`
+- Application runtime checkout: `libraries/fdaPDE-cpp` (ignored and managed locally)
+- Local bootstrap source: `/Users/pietrodonelli/Documents/University/projects/fPLS/fPLS-simulation-study/libraries/fdaPDE-cpp`
 
 The native application driver uses the new fdaPDE C++ `fPLS` implementation. It does not use the obsolete `fPLS-R`/`fdaPDE2` wrapper.
 

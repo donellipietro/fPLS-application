@@ -20,6 +20,8 @@ Raw brain data and generated outputs are intentionally outside Git. The default 
 
 Override it with `TESTBENCH_PATH_APPLICATION_DATA=/path/to/brain-data`.
 
+The native fdaPDE stack is cloned locally into the ignored `libraries/fdaPDE-cpp` directory on `develop_fPLS`; the application does not run against the simulation repository checkout.
+
 ## Minimal Local Workflow
 
 Write the profile and create generated directories:

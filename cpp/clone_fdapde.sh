@@ -5,6 +5,7 @@ repository="${1:-}"
 outer_branch="${2:-}"
 destination="${3:-}"
 managed="${FDAPDE_CPP_MANAGED:-true}"
+core_repository="${FDAPDE_CORE_REPOSITORY:-}"
 
 if [[ -z "${repository}" || -z "${outer_branch}" || -z "${destination}" ]]; then
   echo "Usage: $0 <fdaPDE-cpp-repository> <outer-branch> <destination>" >&2
@@ -80,7 +81,14 @@ fi
 
 # Restore the recorded submodule remote and checkout the outer gitlink.
 git -C "${destination}" submodule sync -- fdaPDE/core
-git -C "${destination}" submodule update --init --checkout fdaPDE/core
+if [[ -n "${core_repository}" ]]; then
+  git -C "${destination}" config submodule.fdaPDE/core.url "${core_repository}"
+  if git -C "${destination}/fdaPDE/core" rev-parse --git-dir >/dev/null 2>&1; then
+    git -C "${destination}/fdaPDE/core" remote set-url origin "${core_repository}"
+  fi
+fi
+git -C "${destination}" -c protocol.file.allow=always \
+  submodule update --init --checkout fdaPDE/core
 
 core_dir="${destination}/fdaPDE/core"
 core_remote_ref="refs/remotes/origin/${core_branch}"

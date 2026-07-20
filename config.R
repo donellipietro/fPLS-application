@@ -22,6 +22,10 @@ TESTBENCH_CONFIG_PROFILES <- list(
 	      "FDAPDE_CPP_REPOSITORY",
 	      unset = "/Users/pietrodonelli/Documents/University/projects/fPLS/fPLS-simulation-study/libraries/fdaPDE-cpp"
 	    )
+	    FDAPDE_CORE_REPOSITORY <- Sys.getenv(
+	      "FDAPDE_CORE_REPOSITORY",
+	      unset = file.path(FDAPDE_CPP_REPOSITORY, "fdaPDE", "core")
+	    )
 
     list(
       PATH_REPO = PATH_REPO,
@@ -49,6 +53,7 @@ TESTBENCH_CONFIG_PROFILES <- list(
         unset = "/opt/homebrew/opt/eigen/include/eigen3"
       ),
       FDAPDE_CPP_REPOSITORY = FDAPDE_CPP_REPOSITORY,
+	      FDAPDE_CORE_REPOSITORY = FDAPDE_CORE_REPOSITORY,
 	      # Outer branch selected by this profile for the local fPLS stack
 	      FDAPDE_CPP_BRANCH = Sys.getenv("FDAPDE_CPP_BRANCH", unset = "develop_fPLS"),
       # Set false to use PATH_FDAPDE_CPP without modifying its Git checkout
@@ -84,6 +89,10 @@ TESTBENCH_CONFIG_PROFILES <- list(
 	      "FDAPDE_CPP_REPOSITORY",
 	      unset = "/Users/pietrodonelli/Documents/University/projects/fPLS/fPLS-simulation-study/libraries/fdaPDE-cpp"
 	    )
+	    FDAPDE_CORE_REPOSITORY <- Sys.getenv(
+	      "FDAPDE_CORE_REPOSITORY",
+	      unset = file.path(FDAPDE_CPP_REPOSITORY, "fdaPDE", "core")
+	    )
     DOCKER_BIND_PATHS <- unique(c(PATH_REPO, PATH_OUTPUT, PATH_FDAPDE_CPP))
     DOCKER_BIND_PATHS <- DOCKER_BIND_PATHS[nzchar(DOCKER_BIND_PATHS)]
 
@@ -106,6 +115,7 @@ TESTBENCH_CONFIG_PROFILES <- list(
       PATH_FDAPDE_CORE = file.path(PATH_FDAPDE_CPP, "fdaPDE/core"),
       PATH_EIGEN_INCLUDE = "/usr/include/eigen3",
       FDAPDE_CPP_REPOSITORY = FDAPDE_CPP_REPOSITORY,
+	      FDAPDE_CORE_REPOSITORY = FDAPDE_CORE_REPOSITORY,
 	      # Outer branch selected by this profile for the local fPLS stack
 	      FDAPDE_CPP_BRANCH = Sys.getenv("FDAPDE_CPP_BRANCH", unset = "develop_fPLS"),
       # Set false to use PATH_FDAPDE_CPP without modifying its Git checkout
@@ -147,6 +157,10 @@ TESTBENCH_CONFIG_PROFILES <- list(
 	      "FDAPDE_CPP_REPOSITORY",
 	      unset = "/Users/pietrodonelli/Documents/University/projects/fPLS/fPLS-simulation-study/libraries/fdaPDE-cpp"
 	    )
+	    FDAPDE_CORE_REPOSITORY <- Sys.getenv(
+	      "FDAPDE_CORE_REPOSITORY",
+	      unset = file.path(FDAPDE_CPP_REPOSITORY, "fdaPDE", "core")
+	    )
     SINGULARITY_IMAGE <- Sys.getenv(
       "SINGULARITY_IMAGE",
       unset = file.path(PATH_REPO, "libraries", "fdapde-docker-latest.sif")
@@ -180,6 +194,7 @@ TESTBENCH_CONFIG_PROFILES <- list(
         unset = "/usr/include/eigen3"
       ),
       FDAPDE_CPP_REPOSITORY = FDAPDE_CPP_REPOSITORY,
+	      FDAPDE_CORE_REPOSITORY = FDAPDE_CORE_REPOSITORY,
 	      # Outer branch selected by this profile for the local fPLS stack
 	      FDAPDE_CPP_BRANCH = Sys.getenv("FDAPDE_CPP_BRANCH", unset = "develop_fPLS"),
       # Set false to use PATH_FDAPDE_CPP without modifying its Git checkout
