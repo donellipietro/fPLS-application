@@ -1,6 +1,6 @@
 # = ========================================================================== =
 # - Script: models_evaluation.R
-# - Desc: Application diagnostics for separation and loading stability.
+# - Desc: Application separation diagnostics for sequential component prefixes.
 # = ========================================================================== =
 
 simple_auc <- function(labels, scores) {
@@ -26,23 +26,12 @@ best_threshold_metrics <- function(labels, scores) {
   metrics[which.max(metrics[, "sensitivity"] + metrics[, "specificity"]), ]
 }
 
-mass_matrix_from_triplets <- function(triplets) {
-  Matrix::sparseMatrix(
-    i = triplets$i,
-    j = triplets$j,
-    x = triplets$value,
-    dims = c(max(triplets$i), max(triplets$j))
-  )
-}
-
-mass_norm <- function(x, M) {
-  sqrt(as.numeric(crossprod(x, M %*% x)))
-}
-
-mass_relative_distance <- function(reference, estimate, M) {
-  same_sign <- mass_norm(reference - estimate, M)
-  opposite_sign <- mass_norm(reference + estimate, M)
-  mass_norm(reference - if (opposite_sign < same_sign) -estimate else estimate, M) / mass_norm(reference, M)
+orient_schz_scores <- function(labels, scores) {
+  raw_auc <- simple_auc(labels, scores)
+  if (is.finite(raw_auc) && raw_auc < 0.5) {
+    return(list(scores = -scores, sign_flipped = TRUE))
+  }
+  list(scores = scores, sign_flipped = FALSE)
 }
 
 evaluate_results <- function(model, data, test_options) {
@@ -57,11 +46,13 @@ evaluate_results <- function(model, data, test_options) {
 
   n_comp <- test_options$model$n_comp
   separation <- do.call(rbind, lapply(seq_len(n_comp), function(h) {
-    scores <- as.numeric(model$results$Y_hat[[h]])
+    oriented <- orient_schz_scores(data$labels, as.numeric(model$results$Y_hat[[h]]))
+    scores <- oriented$scores
     threshold <- best_threshold_metrics(data$labels, scores)
     data.frame(
-      component = h,
+      prefix_components = h,
       auc = simple_auc(data$labels, scores),
+      sign_flipped = oriented$sign_flipped,
       threshold = threshold[["threshold"]],
       sensitivity = threshold[["sensitivity"]],
       specificity = threshold[["specificity"]]

@@ -24,7 +24,7 @@ generate_options <- function(test_suite, name_main_test, path_queue) {
   models <- brain_model_catalog()
   cfg <- load_config()
   fit_native <- name_main_test != "smoke_overall_mean" && !SMOKE_TEST
-  n_comp <- if (name_main_test == "h_stability") c(3L, 4L, 5L, 6L) else 3L
+  n_comp <- if (name_main_test == "h_stability") 6L else 3L
 
   options <- list(
     model_names = models$names,
@@ -33,11 +33,11 @@ generate_options <- function(test_suite, name_main_test, path_queue) {
     cpp_script = test_suite,
     test_options = list(
       n_reps = 1L,
-      varying_options = "n_comp",
+      varying_options = "none",
       threading = "single",
       smoke_test = SMOKE_TEST,
       fit_native = fit_native,
-      run_settings_status = if (fit_native) "h_stability_design_pending_pietro_runtime_confirmation" else "smoke_prepare_only"
+      run_settings_status = if (fit_native) "single_H6_prefix_diagnostics_confirmed" else "smoke_prepare_only"
     ),
     model = list(dimension = 3L, n_comp = n_comp, center = FALSE, discretization = "tetrahedral_fem"),
     data = list(
@@ -68,12 +68,7 @@ generate_options <- function(test_suite, name_main_test, path_queue) {
     )
   )
 
-  options_list <- explode_options(
-    options,
-    by = "n_comp",
-    name_fun = function(opts_i, comb_row) {
-      glue::glue("{name_main_test}_H{as.integer(comb_row$n_comp)}")
-    }
-  )
+  options$name_test <- glue::glue("{name_main_test}_H{n_comp}")
+  options_list <- list(options)
   write_options_json(options_list, dir = path_queue, name_field = "name_test")
 }

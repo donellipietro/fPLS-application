@@ -8,8 +8,8 @@ The application compares control and schizophrenia groups using imputed brain co
 
 - Fit native R1-fPLS on the 3D brain mesh with `tol = 1e-8`, `max_iter = 1000`, and deterministic GCV seed `0`.
 - Inventory the historical application GCV grid, `10^seq(-3, -1, by = 0.2)`, in configuration.
-- Retain `H = 3` as the exploratory application setting to be verified as the first component count with perfect in-sample group separation.
-- Plan distinct fits for larger `H` values, initially `4:6`, and compare the first three loading functions by sign-aligned FEM mass relative norm.
+- Fit a single sequential `H = 6` model and report prefix-wise separation diagnostics for `H = 3:6`; `H = 3` remains the exploratory setting to be verified as the first prefix with perfect in-sample separation.
+- This initial run does not estimate loading stability across distinct fits, because the requested prefixes come from one sequential fit.
 - Record selected lambdas, component iterations, objective/monotonicity diagnostics, non-finite/failure status, wall-clock time, peak RAM, runtime profile, and exact fdaPDE commits.
 
 Raw brain data and generated outputs are intentionally outside Git. The default local data path is the historical ignored application input folder:
@@ -44,7 +44,7 @@ Run the non-expensive application smoke check, which prepares and records the au
 SMOKE_TEST=1 make run_test TEST_SUITE=brain TEST_NAME=smoke_overall_mean
 ```
 
-The planned H-stability run is intentionally not a smoke command. Confirm runtime before executing it:
+The planned `H = 6` prefix-diagnostics run is intentionally not a smoke command:
 
 ```sh
 make run_test TEST_SUITE=brain TEST_NAME=h_stability

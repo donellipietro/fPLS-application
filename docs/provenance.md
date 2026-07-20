@@ -49,3 +49,7 @@ The response recoding is preserved from the historical workflow after relabeling
 - `SCHZ`: `-sqrt(p_CTRL / p_SCHZ)`
 
 The active centering family is the authoritative `overall_mean` family. The historical script's later overwrite to `group_means` is not ported as active behavior.
+
+## Component Diagnostics
+
+The initial native application run requests one sequential `H = 6` fit and evaluates the fitted-response prefixes at `H = 3:6`. This reports in-sample separation by prefix and the first prefix with perfect separation, if any. It does not estimate cross-fit loading stability or verify prefix invariance across distinct fits; that comparison would require separate `H = 3`, `4`, `5`, and `6` fits.

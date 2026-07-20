@@ -10,7 +10,6 @@ graphics.off()
 
 suppressMessages(library(jsonlite))
 suppressMessages(library(glue))
-suppressMessages(library(Matrix))
 
 source("src/utils/directories.R")
 source("src/utils/options.R")
@@ -67,40 +66,11 @@ if (length(all_evaluations) == 0L) {
 separation <- do.call(rbind, lapply(names(all_evaluations), function(name) {
   value <- all_evaluations[[name]]
   if (isTRUE(value$failed) || is.null(value$separation)) return(NULL)
-  cbind(scenario = name, n_comp = value$n_comp, value$separation)
+  cbind(scenario = name, requested_components = value$n_comp, value$separation)
 }))
-
-stability <- NULL
-h3_name <- names(all_evaluations)[vapply(all_evaluations, function(x) identical(x$n_comp, 3L), logical(1))]
-larger <- names(all_evaluations)[vapply(all_evaluations, function(x) isTRUE(x$n_comp > 3L), logical(1))]
-if (length(h3_name) > 0L && length(larger) > 0L) {
-  reference <- all_evaluations[[h3_name[1]]]
-  if (!is.null(reference$mass_triplets)) {
-    M <- mass_matrix_from_triplets(reference$mass_triplets)
-    stability <- do.call(rbind, lapply(larger, function(name) {
-      estimate <- all_evaluations[[name]]
-      do.call(rbind, lapply(seq_len(3L), function(h) {
-        data.frame(
-          reference = h3_name[1],
-          scenario = name,
-          n_comp = estimate$n_comp,
-          component = h,
-          mass_relative_distance = mass_relative_distance(
-            reference$X_loadings[, h],
-            estimate$X_loadings[, h],
-            M
-          )
-        )
-      }))
-    }))
-  }
-}
 
 if (!is.null(separation)) {
   write.csv(separation, file.path(aggregate_dir, "separation_by_H.csv"), row.names = FALSE)
-}
-if (!is.null(stability)) {
-  write.csv(stability, file.path(aggregate_dir, "loading_stability_mass_norm.csv"), row.names = FALSE)
 }
 
 write_json(
@@ -109,9 +79,10 @@ write_json(
     requested = requested,
     run_complete = TRUE,
     first_H_with_perfect_in_sample_separation = if (!is.null(separation) && any(separation$perfect_separation)) {
-      as.character(min(separation$n_comp[separation$perfect_separation]))
+      as.character(min(separation$prefix_components[separation$perfect_separation]))
     } else "not_evaluated",
-    stability_available = !is.null(stability),
+    prefix_diagnostics = "computed_from_single_H6_fit",
+    distinct_fit_prefix_invariance = "not_estimated",
     bootstrap_component_significance = "not_implemented_decision_gated"
   ),
   file.path(aggregate_dir, "application_run_status.json"),
