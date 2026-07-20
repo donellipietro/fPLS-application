@@ -14,7 +14,10 @@ TESTBENCH_CONFIG_PROFILES <- list(
     PATH_REPO <- normalizePath(".", mustWork = FALSE)
     PATH_OUTPUT <- Sys.getenv("TESTBENCH_OUTPUT", unset = PATH_REPO)
     PATH_TMP <- file.path(PATH_OUTPUT, "tmp")
-    PATH_FDAPDE_CPP <- file.path(PATH_REPO, "libraries", "fdaPDE-cpp")
+    PATH_FDAPDE_CPP <- Sys.getenv(
+      "PATH_FDAPDE_CPP",
+      unset = file.path(PATH_REPO, "libraries", "fdaPDE-cpp")
+    )
 	    FDAPDE_CPP_REPOSITORY <- Sys.getenv(
 	      "FDAPDE_CPP_REPOSITORY",
 	      unset = "/Users/pietrodonelli/Documents/University/projects/fPLS/fPLS-simulation-study/libraries/fdaPDE-cpp"
@@ -73,7 +76,10 @@ TESTBENCH_CONFIG_PROFILES <- list(
     PATH_REPO <- normalizePath(".", mustWork = FALSE)
     PATH_OUTPUT <- Sys.getenv("TESTBENCH_OUTPUT", unset = PATH_REPO)
     PATH_TMP <- file.path(PATH_OUTPUT, "tmp")
-    PATH_FDAPDE_CPP <- file.path(PATH_REPO, "libraries", "fdaPDE-cpp")
+    PATH_FDAPDE_CPP <- Sys.getenv(
+      "PATH_FDAPDE_CPP",
+      unset = file.path(PATH_REPO, "libraries", "fdaPDE-cpp")
+    )
 	    FDAPDE_CPP_REPOSITORY <- Sys.getenv(
 	      "FDAPDE_CPP_REPOSITORY",
 	      unset = "/Users/pietrodonelli/Documents/University/projects/fPLS/fPLS-simulation-study/libraries/fdaPDE-cpp"
@@ -133,7 +139,10 @@ TESTBENCH_CONFIG_PROFILES <- list(
     PATH_REPO <- normalizePath(".", mustWork = FALSE)
     PATH_OUTPUT <- Sys.getenv("TESTBENCH_OUTPUT", unset = PATH_REPO)
     PATH_TMP <- file.path(PATH_OUTPUT, "tmp")
-    PATH_FDAPDE_CPP <- file.path(PATH_REPO, "libraries", "fdaPDE-cpp")
+    PATH_FDAPDE_CPP <- Sys.getenv(
+      "PATH_FDAPDE_CPP",
+      unset = file.path(PATH_REPO, "libraries", "fdaPDE-cpp")
+    )
 	    FDAPDE_CPP_REPOSITORY <- Sys.getenv(
 	      "FDAPDE_CPP_REPOSITORY",
 	      unset = "/Users/pietrodonelli/Documents/University/projects/fPLS/fPLS-simulation-study/libraries/fdaPDE-cpp"
