@@ -30,6 +30,22 @@ check_matrix_shape <- function(value, rows, cols, label) {
   }
 }
 
+run_with_heartbeat <- function(command, log_file, heartbeat_seconds = 60L) {
+  heartbeat_seconds <- as.integer(heartbeat_seconds)
+  if (is.na(heartbeat_seconds) || heartbeat_seconds < 1L) stop("heartbeat_seconds must be positive")
+  log_file <- shQuote(log_file)
+  heartbeat_command <- glue::glue(
+    "({command} >> {log_file} 2>&1 & native_pid=$!; started=$(date +%s); ",
+    "(while kill -0 \"$native_pid\" 2>/dev/null; do sleep {heartbeat_seconds}; ",
+    "if kill -0 \"$native_pid\" 2>/dev/null; then now=$(date +%s); ",
+    "printf '%s - fPLS fit still running (%ss elapsed)\\n' \"$(date '+%Y-%m-%d %H:%M:%S')\" ",
+    "\"$((now - started))\" >> {log_file}; fi; done) & heartbeat_pid=$!; ",
+    "wait \"$native_pid\"; native_status=$?; kill \"$heartbeat_pid\" 2>/dev/null || true; ",
+    "wait \"$heartbeat_pid\" 2>/dev/null || true; exit \"$native_status\")"
+  )
+  system_with_memory(heartbeat_command, ignore.stdout = IGNORE_CPP_OUTPUT)
+}
+
 fit_native_model <- function(data, path_list, test_options) {
   cfg <- load_config()
   raw_dir <- file.path(path_list$batch, "raw", "R1_fPLS")
@@ -77,11 +93,10 @@ fit_native_model <- function(data, path_list, test_options) {
 
   binary <- file.path(path_list$cpp_script, "fit_model")
   runner <- file.path(path_list$repo, "cpp", "run.sh")
-  command <- glue::glue(
-    "{shQuote(runner)} --quiet -- {shQuote(binary)} {shQuote(params_file)} ",
-    ">> {shQuote(log_file)} 2>&1"
-  )
-  run_stats <- system_with_memory(command, ignore.stdout = IGNORE_CPP_OUTPUT)
+  command <- glue::glue("{shQuote(runner)} --quiet -- {shQuote(binary)} {shQuote(params_file)}")
+  cat("- Native fPLS process started; heartbeat every 60 seconds\n")
+  run_stats <- run_with_heartbeat(command, log_file)
+  cat("- Native fPLS process completed\n")
   if (!identical(run_stats$status, 0L)) {
     return(list(MODE = "R1_fPLS", status = run_stats$status, raw_output_dir = raw_dir))
   }

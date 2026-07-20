@@ -52,4 +52,11 @@ The planned `H = 6` prefix-diagnostics run is intentionally not a smoke command.
 make run_test TEST_SUITE=brain TEST_NAME=h_stability
 ```
 
+In a second terminal, inspect or follow the native progress log:
+
+```sh
+make h_stability_logs
+make h_stability_tail
+```
+
 See [docs/provenance.md](docs/provenance.md) for source, template, native-stack, and data-provenance details.

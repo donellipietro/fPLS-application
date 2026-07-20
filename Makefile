@@ -34,6 +34,7 @@ SLURM_COMPILE_MODEL ?=
 SLURM_COMPILE_TARGET ?=
 COMPILE_JOBS ?=
 COMPILE_TARGET ?= $(if $(TARGET),$(TARGET),$(if $(EXEC),$(EXEC),$(SOURCE)))
+LINES ?= 40
 
 define config_value
 $(strip $(shell $(RSCRIPT) -e 'source("config.R"); profile <- "$(TESTBENCH_PROFILE)"; if (!profile %in% available_profiles()) quit(status = 0); cfg <- get_config(profile); value <- cfg[["$(1)"]]; if (is.null(value)) value <- ""; cat(value)'))
@@ -69,7 +70,7 @@ COMPILE_STRATEGY := $(call config_value,COMPILE_STRATEGY)
         ensure_env \
         compile compile_all \
         clean_tmp clean_compiled clean_links clean clean_test distclean \
-        run_test inspect_results
+        run_test inspect_results h_stability_logs h_stability_tail
 
 
 all: build
@@ -315,6 +316,20 @@ run_test: ensure_env
 		SMOKE_TEST="$(SMOKE_TEST)" \
 		"$$runner" "$(TEST_SUITE)" "$(TEST_NAME)"; \
 	fi
+
+## Show the latest native H=6 application log messages
+h_stability_logs: ensure_env
+	@set -a; source .env; set +a; \
+	log_file="$$PATH_LOGS/brain/h_stability/log_h_stability_H6.txt"; \
+	if [ -f "$$log_file" ]; then tail -n "$(LINES)" "$$log_file"; \
+	else echo "No H=6 log yet: $$log_file"; fi
+
+## Follow the native H=6 application log messages
+h_stability_tail: ensure_env
+	@set -a; source .env; set +a; \
+	log_file="$$PATH_LOGS/brain/h_stability/log_h_stability_H6.txt"; \
+	if [ -f "$$log_file" ]; then tail -n "$(LINES)" -f "$$log_file"; \
+	else echo "No H=6 log yet: $$log_file"; fi
 
 ## Inspect results of a specific test interactively
 # Usage: make inspect_results TEST_SUITE=<suite> TEST_NAME=<test_name>

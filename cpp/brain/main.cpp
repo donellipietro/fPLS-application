@@ -54,6 +54,7 @@ int run_application(const json& params) {
     const matrix_t nodes = read_matrix(params.at("nodes_file").get<std::string>());
     const matrix_t elements_source = read_matrix(params.at("elements_file").get<std::string>());
     const matrix_t boundary_source = read_matrix(params.at("boundary_file").get<std::string>());
+    std::cout << "- Loaded brain data: " << X.rows() << " subjects, " << X.cols() << " mesh nodes" << std::endl;
     if (nodes.cols() != 3 || elements_source.cols() != 4 || boundary_source.cols() != 1) {
         throw std::runtime_error("invalid 3D mesh input dimensions");
     }
@@ -63,6 +64,7 @@ int run_application(const json& params) {
 
     Eigen::Matrix<int, Eigen::Dynamic, Eigen::Dynamic> elements = elements_source.cast<int>();
     Eigen::Matrix<int, Eigen::Dynamic, Eigen::Dynamic> boundary = boundary_source.cast<int>();
+    std::cout << "- Building tetrahedral FEM space: " << elements.rows() << " elements" << std::endl;
     Triangulation<3, 3> domain(nodes, elements, boundary, cache_cells);
     FeSpace space(domain, P1<1>);
     TrialFunction f(space);
@@ -81,6 +83,9 @@ int run_application(const json& params) {
 
     matrix_t direction_lambdas;
     matrix_t loading_lambdas;
+    std::cout << "Starting fPLS fit: H=" << n_comp << ", calibration=" << calibration;
+    if (calibration == "gcv") std::cout << ", " << lambda_grid.size() << " candidate lambdas";
+    std::cout << std::endl;
     if (calibration == "gcv") {
         if (lambda_grid.empty()) throw std::runtime_error("empty GCV lambda grid");
         model.fit(n_comp, lambda_grid, lambda_grid, OptimizeGCV, max_iter, tolerance, gcv_probes, gcv_seed);
@@ -119,6 +124,9 @@ int run_application(const json& params) {
         component_diagnostics(h, 3) = history.empty() ? std::numeric_limits<double>::quiet_NaN() : history.back();
         component_diagnostics(h, 4) = model.direction_iterations()[h] >= max_iter ? 1.0 : 0.0;
         component_diagnostics(h, 5) = !history.empty() && std::isfinite(history.back()) ? 1.0 : 0.0;
+        std::cout << "- Component " << h + 1 << '/' << n_comp
+                  << " completed: direction lambda=" << direction_lambdas(h, 0)
+                  << ", iterations=" << model.direction_iterations()[h] << std::endl;
     }
     write_csv(
       output_file(output_dir, "component_diagnostics.csv"), component_diagnostics,
@@ -179,6 +187,8 @@ int run_application(const json& params) {
     telemetry_json["provenance"] = params.at("provenance");
     std::ofstream telemetry(output_file(output_dir, "telemetry.json"));
     telemetry << telemetry_json.dump(2) << '\n';
+
+    std::cout << "fPLS fit completed." << std::endl;
 
     return 0;
 }
