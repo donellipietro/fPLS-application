@@ -35,7 +35,7 @@ SLURM_COMPILE_TARGET ?=
 COMPILE_JOBS ?=
 COMPILE_TARGET ?= $(if $(TARGET),$(TARGET),$(if $(EXEC),$(EXEC),$(SOURCE)))
 LINES ?= 40
-H_STABILITY_LOG_H ?= 3
+H_STABILITY_LOG_H ?= 6
 
 define config_value
 $(strip $(shell $(RSCRIPT) -e 'source("config.R"); profile <- "$(TESTBENCH_PROFILE)"; if (!profile %in% available_profiles()) quit(status = 0); cfg <- get_config(profile); value <- cfg[["$(1)"]]; if (is.null(value)) value <- ""; cat(value)'))
@@ -318,14 +318,14 @@ run_test: ensure_env
 		"$$runner" "$(TEST_SUITE)" "$(TEST_NAME)"; \
 	fi
 
-## Show the latest native H-stability application log messages (H_STABILITY_LOG_H=3 by default)
+## Show the latest native H-stability application log messages (H_STABILITY_LOG_H=6 by default)
 h_stability_logs: ensure_env
 	@set -a; source .env; set +a; \
 	log_file="$$PATH_LOGS/brain/h_stability/log_h_stability_H$(H_STABILITY_LOG_H).txt"; \
 	if [ -f "$$log_file" ]; then tail -n "$(LINES)" "$$log_file"; \
 	else echo "No H=$(H_STABILITY_LOG_H) log yet: $$log_file"; fi
 
-## Follow native H-stability application log messages (H_STABILITY_LOG_H=3 by default)
+## Follow native H-stability application log messages (H_STABILITY_LOG_H=6 by default)
 h_stability_tail: ensure_env
 	@set -a; source .env; set +a; \
 	log_file="$$PATH_LOGS/brain/h_stability/log_h_stability_H$(H_STABILITY_LOG_H).txt"; \

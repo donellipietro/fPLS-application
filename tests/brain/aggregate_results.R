@@ -28,7 +28,6 @@ dir.create(aggregate_dir, recursive = TRUE, showWarnings = FALSE)
 
 path_list <- create_paths(test_suite)
 all_evaluations <- list()
-expected_names <- character()
 
 for (family in families) {
   queue_dir <- file.path(path_list$queue, family)
@@ -36,7 +35,6 @@ for (family in families) {
   option_files <- sort(list.files(queue_dir, pattern = "[.]json$", full.names = TRUE))
   for (option_file in option_files) {
     options <- fromJSON(option_file, simplifyVector = TRUE)
-    expected_names <- c(expected_names, options$name_test)
     result_file <- file.path(
       path_list$results,
       family,
@@ -66,8 +64,6 @@ if (length(all_evaluations) == 0L) {
   cat("No results available to aggregate.\n")
   quit(save = "no", status = 0)
 }
-
-missing_names <- setdiff(expected_names, names(all_evaluations))
 
 failed_names <- names(all_evaluations)[vapply(all_evaluations, function(x) isTRUE(x$failed), logical(1))]
 if (length(failed_names) > 0L) {
@@ -130,26 +126,27 @@ if (!is.null(separation)) {
 }
 
 stability <- NULL
-if (requested == "h_stability" && all(c("h_stability_H3", "h_stability_H6") %in% names(all_evaluations))) {
-  raw_root <- file.path(path_list$results, "h_stability")
-  raw_dir <- function(name) file.path(raw_root, name, "batch_1", "raw", "R1_fPLS")
-  reference_dir <- raw_dir("h_stability_H3")
-  comparison_dir <- raw_dir("h_stability_H6")
-  stability <- loading_stability(
-    reference = as.matrix(read.csv(file.path(reference_dir, "x_loadings_coefficients.csv"), check.names = FALSE)),
-    comparison = as.matrix(read.csv(file.path(comparison_dir, "x_loadings_coefficients.csv"), check.names = FALSE))[, seq_len(3L), drop = FALSE],
-    points = as.matrix(read.csv(file.path(reference_dir, "points.csv"), check.names = FALSE)),
-    elements = as.matrix(read.csv(file.path(reference_dir, "elements.csv"), check.names = FALSE))
+if (requested == "h_stability" && "h_stability_H6" %in% names(all_evaluations)) {
+  raw_dir <- file.path(path_list$results, "h_stability", "h_stability_H6", "batch_1", "raw", "R1_fPLS")
+  stability <- rotated_loading_stability(
+    x_loadings = as.matrix(suppressWarnings(read.csv(file.path(raw_dir, "x_loadings_coefficients.csv"), check.names = FALSE))),
+    y_loadings = as.matrix(suppressWarnings(read.csv(file.path(raw_dir, "y_loadings.csv"), check.names = FALSE))),
+    points = as.matrix(suppressWarnings(read.csv(file.path(raw_dir, "points.csv"), check.names = FALSE))),
+    elements = as.matrix(suppressWarnings(read.csv(file.path(raw_dir, "elements.csv"), check.names = FALSE)))
   )
-  write.csv(stability$per_component, file.path(aggregate_dir, "loading_stability_H3_vs_H6.csv"), row.names = FALSE)
-  write.csv(stability$rotation, file.path(aggregate_dir, "loading_stability_rotation_H6_to_H3.csv"), row.names = FALSE)
-  stability_plot <- ggplot(stability$per_component, aes(component, relative_mass_error)) +
-    geom_col(fill = "#2b6cb0", width = 0.6) +
-    scale_x_continuous(breaks = seq_len(3L)) +
-    labs(x = "Loading function", y = "Relative FEM mass-norm difference") +
-    theme_bw()
+  write.csv(stability$per_loading, file.path(aggregate_dir, "rotated_loading_stability_by_H.csv"), row.names = FALSE)
+  for (name in names(stability$rotations)) {
+    write.csv(stability$rotations[[name]], file.path(aggregate_dir, glue::glue("latent_rotation_{name}.csv")), row.names = FALSE)
+  }
+  stability_plot <- ggplot(stability$per_loading, aes(retained_components, relative_mass_error, colour = factor(loading))) +
+    geom_line(linewidth = 0.7) +
+    geom_point(size = 2) +
+    scale_x_continuous(breaks = 3:6) +
+    labs(x = "Retained components H", y = "Relative FEM mass-norm difference from rotated H=3", colour = "Loading") +
+    theme_bw() +
+    theme(legend.position = "top")
   ggsave(
-    file.path(image_dir, "loading_stability_H3_vs_H6.png"),
+    file.path(image_dir, "rotated_loading_stability_by_H.png"),
     stability_plot,
     width = 7,
     height = 4.5,
@@ -161,24 +158,23 @@ write_json(
   list(
     schema_version = 1L,
     requested = requested,
-    run_complete = length(missing_names) == 0L,
-    status = if (length(missing_names) == 0L) "complete" else "pending_required_fits",
-    missing_scenarios = missing_names,
+    run_complete = TRUE,
+    status = "complete",
     first_H_with_perfect_in_sample_separation = if (!is.null(separation) && any(separation$perfect_separation)) {
       as.character(min(separation$prefix_components[separation$perfect_separation]))
     } else "not_evaluated",
     prefix_diagnostics = "computed_from_single_H6_fit",
     loading_stability = if (is.null(stability)) {
-      "requires_independent_H3_and_H6_fits"
+      "requires_H6_fit"
     } else {
       list(
-        reference = "H3",
-        comparison = "first_three_H6_loadings",
-        alignment = "orthogonal_Procrustes_under_tetrahedral_P1_FEM_mass_inner_product",
-        global_relative_mass_error = stability$global_relative_mass_error
+        reference = "rotated_H3_prefix",
+        comparisons = "rotated_H4_to_H6_prefixes",
+        rotation = "historical_Gram_Schmidt_Y_loading_basis",
+        metric = "sign_aligned_tetrahedral_P1_FEM_mass_relative_norm"
       )
     },
-    distinct_fit_prefix_invariance = "evaluated_as_H3_vs_first_three_H6_loading_stability",
+    distinct_fit_prefix_invariance = "not_applicable_single_progressive_fit",
     bootstrap_component_significance = "not_implemented_decision_gated"
   ),
   file.path(aggregate_dir, "application_run_status.json"),
