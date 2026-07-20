@@ -59,6 +59,9 @@ make h_stability_logs
 make h_stability_tail
 ```
 
+The helpers follow H=3 by default; pass `H_STABILITY_LOG_H=6` to inspect the
+cached H=6 log instead.
+
 Completed diagnostics are written to `results/brain/aggregate/h_stability/`:
 `separation_by_H.csv`, `loading_stability_H3_vs_H6.csv`, and the corresponding
 figures under `images/brain/aggregate/h_stability/`.
