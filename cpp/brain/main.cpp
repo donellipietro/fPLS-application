@@ -28,17 +28,6 @@ std::string output_file(const std::filesystem::path& output_dir, const std::stri
     return (output_dir / name).string();
 }
 
-template <typename SparseMatrix>
-void write_sparse_triplets(const std::string& file, const SparseMatrix& matrix) {
-    std::ofstream out(file);
-    out << "i,j,value\n";
-    for (int k = 0; k < matrix.outerSize(); ++k) {
-        for (typename SparseMatrix::InnerIterator it(matrix, k); it; ++it) {
-            out << (it.row() + 1) << ',' << (it.col() + 1) << ',' << it.value() << '\n';
-        }
-    }
-}
-
 int run_application(const json& params) {
     const auto wall_start = std::chrono::steady_clock::now();
 
@@ -85,8 +74,6 @@ int run_application(const json& params) {
     auto& layer = data.template insert_scalar_layer<POINT>("observations", MESH_NODES);
     layer.load_blk("X", X.transpose());
 
-    auto mass_penalty = fe_ls_elliptic(penalty, load);
-    internals::fe_ls_elliptic mass_solver("X", data, mass_penalty.get());
     auto direction_penalty = fe_ls_elliptic(penalty, load);
     auto loading_penalty = fe_ls_elliptic(penalty, load);
     fPLS model("X", Y, data, std::move(direction_penalty), std::move(loading_penalty));
@@ -121,8 +108,6 @@ int run_application(const json& params) {
     write_csv(output_file(output_dir, "y_loadings.csv"), model.Y_loadings());
     write_csv(output_file(output_dir, "direction_lambdas.csv"), direction_lambdas);
     write_csv(output_file(output_dir, "loading_lambdas.csv"), loading_lambdas);
-    write_sparse_triplets(output_file(output_dir, "mass_triplets.csv"), mass_solver.mass());
-
     matrix_t component_diagnostics(n_comp, 6);
     for (int h = 0; h < n_comp; ++h) {
         const auto& history = model.direction_objective_history()[h];

@@ -46,7 +46,7 @@ Run the non-expensive application smoke check, which prepares and records the au
 SMOKE_TEST=1 make run_test TEST_SUITE=brain TEST_NAME=smoke_overall_mean
 ```
 
-The planned `H = 6` prefix-diagnostics run is intentionally not a smoke command:
+The planned `H = 6` prefix-diagnostics run is intentionally not a smoke command. A native failure is recorded in the aggregate status and returned as a nonzero command status:
 
 ```sh
 make run_test TEST_SUITE=brain TEST_NAME=h_stability

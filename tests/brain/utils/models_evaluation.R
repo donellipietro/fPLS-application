@@ -65,8 +65,6 @@ evaluate_results <- function(model, data, test_options) {
     status = 0L,
     n_comp = n_comp,
     separation = separation,
-    X_loadings = model$results$X_loadings,
-    mass_triplets = model$results$mass_triplets,
     execution_time = model$results$execution_time,
     peak_ram_mib = model$results$peak_ram_mib,
     iteration_count = model$results$iteration_counts,

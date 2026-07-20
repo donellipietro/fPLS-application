@@ -63,6 +63,32 @@ if (length(all_evaluations) == 0L) {
   quit(save = "no", status = 0)
 }
 
+failed_names <- names(all_evaluations)[vapply(all_evaluations, function(x) isTRUE(x$failed), logical(1))]
+if (length(failed_names) > 0L) {
+  failures <- lapply(failed_names, function(name) {
+    value <- all_evaluations[[name]]
+    list(
+      scenario = name,
+      native_status = as.integer(value$status),
+      validation_status = value$validation_status
+    )
+  })
+  write_json(
+    list(
+      schema_version = 1L,
+      requested = requested,
+      run_complete = FALSE,
+      status = "native_fit_failed",
+      native_failures = failures
+    ),
+    file.path(aggregate_dir, "application_run_status.json"),
+    auto_unbox = TRUE,
+    pretty = TRUE
+  )
+  cat("Native application fit failed; see the scenario log and application_run_status.json.\n")
+  quit(save = "no", status = 2)
+}
+
 separation <- do.call(rbind, lapply(names(all_evaluations), function(name) {
   value <- all_evaluations[[name]]
   if (isTRUE(value$failed) || is.null(value$separation)) return(NULL)

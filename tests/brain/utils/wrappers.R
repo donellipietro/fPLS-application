@@ -105,7 +105,6 @@ fit_native_model <- function(data, path_list, test_options) {
     Y_loadings = read_cpp_matrix(file.path(raw_dir, "y_loadings.csv")),
     direction_lambdas = read_cpp_matrix(file.path(raw_dir, "direction_lambdas.csv")),
     loading_lambdas = read_cpp_matrix(file.path(raw_dir, "loading_lambdas.csv")),
-    mass_triplets = suppressWarnings(read.csv(file.path(raw_dir, "mass_triplets.csv"))),
     iteration_counts = component_diagnostics$iterations,
     monotone = component_diagnostics$monotone,
     objective = component_diagnostics$objective,
