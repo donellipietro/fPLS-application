@@ -46,7 +46,7 @@ Run the non-expensive application smoke check, which prepares and records the au
 SMOKE_TEST=1 make run_test TEST_SUITE=brain TEST_NAME=smoke_overall_mean
 ```
 
-The planned `H = 6` prefix-diagnostics run is intentionally not a smoke command. A native failure is recorded in the aggregate status and returned as a nonzero command status:
+The planned `H = 3` versus `H = 6` loading-stability run is intentionally not a smoke command. It reuses a compatible H=6 result when available, runs the independent H=3 reference fit, and compares the first three X loading functions after orthogonal rotation under the tetrahedral FEM mass inner product. A native failure is recorded in the aggregate status and returned as a nonzero command status:
 
 ```sh
 make run_test TEST_SUITE=brain TEST_NAME=h_stability
@@ -59,8 +59,8 @@ make h_stability_logs
 make h_stability_tail
 ```
 
-Completed H-prefix separation diagnostics are written to
-`results/brain/aggregate/h_stability/separation_by_H.csv`, with the compact
-figure at `images/brain/aggregate/h_stability/separation_by_H.png`.
+Completed diagnostics are written to `results/brain/aggregate/h_stability/`:
+`separation_by_H.csv`, `loading_stability_H3_vs_H6.csv`, and the corresponding
+figures under `images/brain/aggregate/h_stability/`.
 
 See [docs/provenance.md](docs/provenance.md) for source, template, native-stack, and data-provenance details.
