@@ -59,4 +59,8 @@ make h_stability_logs
 make h_stability_tail
 ```
 
+Completed H-prefix separation diagnostics are written to
+`results/brain/aggregate/h_stability/separation_by_H.csv`, with the compact
+figure at `images/brain/aggregate/h_stability/separation_by_H.png`.
+
 See [docs/provenance.md](docs/provenance.md) for source, template, native-stack, and data-provenance details.

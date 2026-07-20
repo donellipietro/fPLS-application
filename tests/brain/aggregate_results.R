@@ -10,6 +10,7 @@ graphics.off()
 
 suppressMessages(library(jsonlite))
 suppressMessages(library(glue))
+suppressMessages(library(ggplot2))
 
 source("src/utils/directories.R")
 source("src/utils/options.R")
@@ -97,6 +98,29 @@ separation <- do.call(rbind, lapply(names(all_evaluations), function(name) {
 
 if (!is.null(separation)) {
   write.csv(separation, file.path(aggregate_dir, "separation_by_H.csv"), row.names = FALSE)
+
+  image_dir <- file.path(cfg$PATH_IMAGES, test_suite, "aggregate", requested)
+  dir.create(image_dir, recursive = TRUE, showWarnings = FALSE)
+  separation_long <- rbind(
+    data.frame(prefix_components = separation$prefix_components, metric = "AUC", value = separation$auc),
+    data.frame(prefix_components = separation$prefix_components, metric = "Sensitivity", value = separation$sensitivity),
+    data.frame(prefix_components = separation$prefix_components, metric = "Specificity", value = separation$specificity)
+  )
+  separation_plot <- ggplot(separation_long, aes(prefix_components, value, colour = metric)) +
+    geom_line(linewidth = 0.7) +
+    geom_point(size = 2) +
+    scale_x_continuous(breaks = sort(unique(separation$prefix_components))) +
+    scale_y_continuous(limits = c(0, 1), breaks = c(0, 0.5, 1)) +
+    labs(x = "Component prefix H", y = "In-sample separation", colour = NULL) +
+    theme_bw() +
+    theme(legend.position = "top")
+  ggsave(
+    file.path(image_dir, "separation_by_H.png"),
+    separation_plot,
+    width = 7,
+    height = 4.5,
+    dpi = 180
+  )
 }
 
 write_json(
