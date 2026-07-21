@@ -69,4 +69,16 @@ Completed diagnostics are written to `results/brain/aggregate/h_stability/`:
 and the coefficient maps under `maximum_margin_maps/`. Margin and correlation figures are
 written under `images/brain/aggregate/h_stability/`.
 
+The `paraview/` subdirectory contains one tetrahedral VTU with raw and comparison-normalized
+`beta`, `gamma`, and `f` fields for `H = 3:6`. Its Python scene arranges the fields as three
+rows by four component-prefix columns, uses linked cameras, and writes a reusable `.pvsm`
+state when run:
+
+```sh
+paraview --script=results/brain/aggregate/h_stability/paraview/maximum_margin_comparison.py
+```
+
+The scene uses response-oriented, FEM-mass-normalized fields for shape comparison; the same
+VTU retains the unnormalized coefficient arrays.
+
 See [docs/provenance.md](docs/provenance.md) for source, template, native-stack, and data-provenance details.

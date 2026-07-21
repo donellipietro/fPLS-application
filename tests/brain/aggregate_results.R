@@ -19,6 +19,7 @@ source("tests/brain/utils/generate_options.R")
 source("tests/brain/utils/models_evaluation.R")
 source("tests/brain/utils/loading_stability.R")
 source("tests/brain/utils/maximum_margin_stability.R")
+source("tests/brain/utils/paraview_export.R")
 
 args <- commandArgs(trailingOnly = TRUE)
 requested <- if (length(args)) args[1] else name_main_test_default
@@ -229,6 +230,48 @@ if (requested == "h_stability" && "h_stability_H6" %in% names(all_evaluations)) 
     )
   }
 
+  volumes <- tetrahedral_volumes(points, matrix(as.integer(elements), ncol = 4L))
+  mass_unit <- function(values) {
+    values <- matrix(as.numeric(values), ncol = 1L)
+    drop(values / sqrt(drop(mass_crossprod(values, values, elements, volumes))))
+  }
+  paraview_fields <- list()
+  for (h in 3:6) {
+    beta_h <- drop(beta_coefficients[[as.character(h)]])
+    gamma_h <- drop(maximum_margin_summary$classifier_maps[[as.character(h)]])
+    f_h <- drop(maximum_margin_summary$reconstruction_maps[[as.character(h)]])
+    paraview_fields[[glue::glue("beta_H{h}")]] <- beta_h
+    paraview_fields[[glue::glue("gamma_H{h}")]] <- gamma_h
+    paraview_fields[[glue::glue("f_H{h}")]] <- f_h
+    paraview_fields[[glue::glue("beta_SCHZ_unit_H{h}")]] <- mass_unit(-beta_h)
+    paraview_fields[[glue::glue("gamma_SCHZ_unit_H{h}")]] <- mass_unit(gamma_h)
+    paraview_fields[[glue::glue("f_SCHZ_unit_H{h}")]] <- mass_unit(f_h)
+  }
+  paraview_dir <- file.path(aggregate_dir, "paraview")
+  dir.create(paraview_dir, recursive = TRUE, showWarnings = FALSE)
+  write_tetrahedral_vtu(
+    file.path(paraview_dir, "maximum_margin_comparison.vtu"),
+    points,
+    elements,
+    paraview_fields
+  )
+  file.copy(
+    "tests/brain/paraview/maximum_margin_comparison.py",
+    file.path(paraview_dir, "maximum_margin_comparison.py"),
+    overwrite = TRUE
+  )
+  writeLines(c(
+    "Maximum-margin ParaView comparison",
+    "",
+    "Run maximum_margin_comparison.py from ParaView's Python Shell, or launch:",
+    glue::glue("paraview --script={file.path(paraview_dir, 'maximum_margin_comparison.py')}"),
+    "",
+    "The script opens a 3 x 4 linked-camera scene and writes maximum_margin_comparison.pvsm.",
+    "Rows: response-oriented beta, SVM classifier coefficient gamma, SVM reconstruction loading f.",
+    "Columns: H = 3, 4, 5, 6. Scene fields are FEM-mass normalized and oriented positive toward SCHZ.",
+    "The VTU also contains the raw beta_H*, gamma_H*, and f_H* coefficient arrays."
+  ), file.path(paraview_dir, "README.txt"))
+
   margin_plot <- ggplot(
     maximum_margin_summary$diagnostics,
     aes(retained_components, geometric_margin_standardized_scores)
@@ -322,6 +365,7 @@ write_json(
         reconstruction_loading = "R_H_times_unit_score_space_boundary_normal",
         classifier_coefficient = "W_H_times_inverse_RtW_times_score_space_boundary_normal",
         spatial_metric = "tetrahedral_P1_FEM_mass_correlation_with_H3",
+        paraview_bundle = "aggregate/h_stability/paraview/maximum_margin_comparison.vtu_and_scene_script",
         classifier_formula_max_abs_error_against_native_beta = classifier_formula_max_abs_error
       )
     },
