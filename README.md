@@ -46,7 +46,7 @@ Run the non-expensive application smoke check, which prepares and records the au
 SMOKE_TEST=1 make run_test TEST_SUITE=brain TEST_NAME=smoke_overall_mean
 ```
 
-The H=6 run supplies the component-stability analysis without a second fit. For each prefix H=3,...,6, it applies the historical Gram--Schmidt latent rotation (the Y-loading vector followed by canonical basis vectors) and compares the first three rotated X loading functions with the rotated H=3 prefix in the tetrahedral FEM mass norm. A native failure is recorded in the aggregate status and returned as a nonzero command status:
+The H=6 run supplies the component-stability analysis without a second fit. For each prefix H=3,...,6, it applies the historical Gram--Schmidt latent rotation (the Y-loading vector followed by canonical basis vectors) and compares only the first rotated X loading function, which is aligned with the decision boundary, with its rotated H=3 reference in the tetrahedral FEM mass norm. It also compares the native regression coefficient function beta against beta at H=3. A native failure is recorded in the aggregate status and returned as a nonzero command status:
 
 ```sh
 make run_test TEST_SUITE=brain TEST_NAME=h_stability
@@ -62,7 +62,7 @@ make h_stability_tail
 The helpers follow H=6 by default.
 
 Completed diagnostics are written to `results/brain/aggregate/h_stability/`:
-`separation_by_H.csv`, `rotated_loading_stability_by_H.csv`, and the corresponding
+`separation_by_H.csv`, `decision_boundary_and_beta_stability_by_H.csv`, and the corresponding
 figures under `images/brain/aggregate/h_stability/`.
 
 See [docs/provenance.md](docs/provenance.md) for source, template, native-stack, and data-provenance details.

@@ -1,6 +1,6 @@
 # = ========================================================================== =
 # - Script: loading_stability.R
-# - Desc: Historical latent rotation and FEM mass-norm loading comparisons.
+# - Desc: Decision-boundary loading and beta FEM mass-norm comparisons.
 # = ========================================================================== =
 
 tetrahedral_volumes <- function(points, elements) {
@@ -40,7 +40,23 @@ historical_rotation <- function(y_loadings) {
   basis
 }
 
-rotated_loading_stability <- function(x_loadings, y_loadings, points, elements, reference_h = 3L) {
+mass_stability <- function(reference, candidate, elements, volumes, sign_align = FALSE) {
+  inner <- drop(mass_crossprod(candidate, reference, elements, volumes))
+  sign <- if (sign_align && inner < 0) -1 else 1
+  candidate <- sign * candidate
+  reference_norm <- sqrt(drop(mass_crossprod(reference, reference, elements, volumes)))
+  candidate_norm <- sqrt(drop(mass_crossprod(candidate, candidate, elements, volumes)))
+  difference_norm <- sqrt(drop(mass_crossprod(candidate - reference, candidate - reference, elements, volumes)))
+  data.frame(
+    sign_alignment = sign,
+    relative_mass_error = difference_norm / reference_norm,
+    mass_correlation = (sign * inner) / (candidate_norm * reference_norm),
+    reference_mass_norm = reference_norm,
+    candidate_mass_norm = candidate_norm
+  )
+}
+
+first_rotated_loading_stability <- function(x_loadings, y_loadings, points, elements, reference_h = 3L) {
   elements <- matrix(as.integer(elements), ncol = 4L)
   volumes <- tetrahedral_volumes(points, elements)
   if (any(!is.finite(volumes)) || any(volumes <= 0)) stop("brain mesh has invalid tetrahedral volumes")
@@ -49,36 +65,32 @@ rotated_loading_stability <- function(x_loadings, y_loadings, points, elements, 
     stop("rotated loading stability requires matching X/Y loading prefixes")
   }
 
-  rotate_prefix <- function(h) {
-    x_loadings[, seq_len(h), drop = FALSE] %*% historical_rotation(as.numeric(y_loadings[1, seq_len(h)]))
-  }
-  reference <- rotate_prefix(reference_h)[, seq_len(3L), drop = FALSE]
-  reference_norms <- sqrt(diag(mass_crossprod(reference, reference, elements, volumes)))
-  rotations <- vector("list", max_h - reference_h + 1L)
-  names(rotations) <- paste0("H", reference_h:max_h)
-  comparisons <- lapply(reference_h:max_h, function(h) {
+  first_rotated_loading <- function(h) {
     rotation <- historical_rotation(as.numeric(y_loadings[1, seq_len(h)]))
-    rotations[[paste0("H", h)]] <<- rotation
-    candidate <- (x_loadings[, seq_len(h), drop = FALSE] %*% rotation)[, seq_len(3L), drop = FALSE]
-    inner <- diag(mass_crossprod(candidate, reference, elements, volumes))
-    sign <- ifelse(inner < 0, -1, 1)
-    candidate <- sweep(candidate, 2L, sign, `*`)
-    difference_norms <- sqrt(diag(mass_crossprod(candidate - reference, candidate - reference, elements, volumes)))
-    candidate_norms <- sqrt(diag(mass_crossprod(candidate, candidate, elements, volumes)))
-    data.frame(
-      retained_components = h,
-      loading = seq_len(3L),
-      sign_aligned = sign,
-      relative_mass_error = difference_norms / reference_norms,
-      mass_correlation = abs(inner) / (candidate_norms * reference_norms),
-      reference_mass_norm = reference_norms,
-      candidate_mass_norm = candidate_norms
-    )
+    x_loadings[, seq_len(h), drop = FALSE] %*% rotation[, 1]
+  }
+  reference <- first_rotated_loading(reference_h)
+  comparisons <- lapply(reference_h:max_h, function(h) {
+    cbind(retained_components = h, mass_stability(reference, first_rotated_loading(h), elements, volumes, sign_align = TRUE))
   })
 
   list(
-    per_loading = do.call(rbind, comparisons),
-    rotations = rotations,
+    summary = do.call(rbind, comparisons),
+    reference = reference,
+    first_rotation = historical_rotation(as.numeric(y_loadings[1, seq_len(reference_h)]))[, 1],
     total_volume = sum(volumes)
   )
+}
+
+beta_stability <- function(beta_coefficients, points, elements, reference_h = 3L) {
+  elements <- matrix(as.integer(elements), ncol = 4L)
+  volumes <- tetrahedral_volumes(points, elements)
+  reference <- beta_coefficients[[as.character(reference_h)]]
+  comparisons <- lapply(sort(as.integer(names(beta_coefficients))), function(h) {
+    cbind(
+      retained_components = h,
+      mass_stability(reference, beta_coefficients[[as.character(h)]], elements, volumes, sign_align = FALSE)
+    )
+  })
+  list(summary = do.call(rbind, comparisons), total_volume = sum(volumes))
 }

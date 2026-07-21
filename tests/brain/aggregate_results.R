@@ -125,28 +125,36 @@ if (!is.null(separation)) {
   )
 }
 
-stability <- NULL
+loading_stability <- NULL
+beta_stability_summary <- NULL
 if (requested == "h_stability" && "h_stability_H6" %in% names(all_evaluations)) {
   raw_dir <- file.path(path_list$results, "h_stability", "h_stability_H6", "batch_1", "raw", "R1_fPLS")
-  stability <- rotated_loading_stability(
+  points <- as.matrix(suppressWarnings(read.csv(file.path(raw_dir, "points.csv"), check.names = FALSE)))
+  elements <- as.matrix(suppressWarnings(read.csv(file.path(raw_dir, "elements.csv"), check.names = FALSE)))
+  loading_stability <- first_rotated_loading_stability(
     x_loadings = as.matrix(suppressWarnings(read.csv(file.path(raw_dir, "x_loadings_coefficients.csv"), check.names = FALSE))),
     y_loadings = as.matrix(suppressWarnings(read.csv(file.path(raw_dir, "y_loadings.csv"), check.names = FALSE))),
-    points = as.matrix(suppressWarnings(read.csv(file.path(raw_dir, "points.csv"), check.names = FALSE))),
-    elements = as.matrix(suppressWarnings(read.csv(file.path(raw_dir, "elements.csv"), check.names = FALSE)))
+    points = points,
+    elements = elements
   )
-  write.csv(stability$per_loading, file.path(aggregate_dir, "rotated_loading_stability_by_H.csv"), row.names = FALSE)
-  for (name in names(stability$rotations)) {
-    write.csv(stability$rotations[[name]], file.path(aggregate_dir, glue::glue("latent_rotation_{name}.csv")), row.names = FALSE)
-  }
-  stability_plot <- ggplot(stability$per_loading, aes(retained_components, relative_mass_error, colour = factor(loading))) +
+  beta_coefficients <- setNames(lapply(3:6, function(h) {
+    as.matrix(suppressWarnings(read.csv(file.path(raw_dir, glue::glue("beta_coefficients_h{h}.csv")), check.names = FALSE)))
+  }), as.character(3:6))
+  beta_stability_summary <- beta_stability(beta_coefficients, points, elements)
+  stability <- rbind(
+    transform(loading_stability$summary, quantity = "Decision-boundary loading f1"),
+    transform(beta_stability_summary$summary, quantity = "Regression coefficient beta")
+  )
+  write.csv(stability, file.path(aggregate_dir, "decision_boundary_and_beta_stability_by_H.csv"), row.names = FALSE)
+  stability_plot <- ggplot(stability, aes(retained_components, relative_mass_error, colour = quantity)) +
     geom_line(linewidth = 0.7) +
     geom_point(size = 2) +
     scale_x_continuous(breaks = 3:6) +
-    labs(x = "Retained components H", y = "Relative FEM mass-norm difference from rotated H=3", colour = "Loading") +
+    labs(x = "Retained components H", y = "Relative FEM mass-norm difference from H=3", colour = NULL) +
     theme_bw() +
     theme(legend.position = "top")
   ggsave(
-    file.path(image_dir, "rotated_loading_stability_by_H.png"),
+    file.path(image_dir, "decision_boundary_and_beta_stability_by_H.png"),
     stability_plot,
     width = 7,
     height = 4.5,
@@ -164,14 +172,25 @@ write_json(
       as.character(min(separation$prefix_components[separation$perfect_separation]))
     } else "not_evaluated",
     prefix_diagnostics = "computed_from_single_H6_fit",
-    loading_stability = if (is.null(stability)) {
+    decision_boundary_loading_stability = if (is.null(loading_stability)) {
       "requires_H6_fit"
     } else {
       list(
         reference = "rotated_H3_prefix",
-        comparisons = "rotated_H4_to_H6_prefixes",
+        comparisons = "rotated_H4_to_H6_prefixes_first_loading_only",
         rotation = "historical_Gram_Schmidt_Y_loading_basis",
-        metric = "sign_aligned_tetrahedral_P1_FEM_mass_relative_norm"
+        metric = "sign_aligned_tetrahedral_P1_FEM_mass_relative_norm",
+        rotated_loadings_2_and_3 = "not_reported_not_scientific_targets"
+      )
+    },
+    beta_stability = if (is.null(beta_stability_summary)) {
+      "requires_H6_fit"
+    } else {
+      list(
+        reference = "native_Beta_H3",
+        comparisons = "native_Beta_H4_to_H6",
+        definition = "model.Beta(h)_exported_as_beta_coefficients_h.csv",
+        metric = "tetrahedral_P1_FEM_mass_relative_norm_without_sign_flip_response_orientation_fixed"
       )
     },
     distinct_fit_prefix_invariance = "not_applicable_single_progressive_fit",
