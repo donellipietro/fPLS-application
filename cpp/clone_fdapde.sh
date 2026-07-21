@@ -6,6 +6,8 @@ outer_branch="${2:-}"
 destination="${3:-}"
 managed="${FDAPDE_CPP_MANAGED:-true}"
 core_repository="${FDAPDE_CORE_REPOSITORY:-}"
+expected_outer_commit="${FDAPDE_CPP_COMMIT:-}"
+expected_core_commit="${FDAPDE_CORE_COMMIT:-}"
 
 if [[ -z "${repository}" || -z "${outer_branch}" || -z "${destination}" ]]; then
   echo "Usage: $0 <fdaPDE-cpp-repository> <outer-branch> <destination>" >&2
@@ -31,6 +33,14 @@ case "${managed}" in
 
     outer_commit="$(git -C "${destination}" rev-parse HEAD)"
     core_commit="$(git -C "${core_dir}" rev-parse HEAD)"
+    if [[ -n "${expected_outer_commit}" && "${outer_commit}" != "${expected_outer_commit}" ]]; then
+      echo "Error: expected outer ${expected_outer_commit}, found ${outer_commit}" >&2
+      exit 1
+    fi
+    if [[ -n "${expected_core_commit}" && "${core_commit}" != "${expected_core_commit}" ]]; then
+      echo "Error: expected core ${expected_core_commit}, found ${core_commit}" >&2
+      exit 1
+    fi
     printf 'Using unmanaged fdaPDE-cpp at %s (%s); core (%s)\n' \
       "${destination}" "${outer_commit}" "${core_commit}"
     exit 0
@@ -69,13 +79,29 @@ fi
 outer_remote_ref="refs/remotes/origin/${outer_branch}"
 git -C "${destination}" fetch --quiet origin \
   "+refs/heads/${outer_branch}:${outer_remote_ref}"
-outer_commit="$(git -C "${destination}" rev-parse "${outer_remote_ref}")"
-git -C "${destination}" checkout --quiet -B "${outer_branch}" "${outer_remote_ref}"
+outer_tip="$(git -C "${destination}" rev-parse "${outer_remote_ref}")"
+outer_commit="${outer_tip}"
+if [[ -n "${expected_outer_commit}" ]]; then
+  if ! git -C "${destination}" cat-file -e "${expected_outer_commit}^{commit}" 2>/dev/null; then
+    echo "Error: expected outer commit is unavailable: ${expected_outer_commit}" >&2
+    exit 1
+  fi
+  if ! git -C "${destination}" merge-base --is-ancestor "${expected_outer_commit}" "${outer_remote_ref}"; then
+    echo "Error: expected outer ${expected_outer_commit} is not on ${outer_branch}" >&2
+    exit 1
+  fi
+  outer_commit="${expected_outer_commit}"
+fi
+git -C "${destination}" checkout --quiet -B "${outer_branch}" "${outer_commit}"
 git -C "${destination}" branch --quiet \
   --set-upstream-to="origin/${outer_branch}" "${outer_branch}"
 core_commit="$(git -C "${destination}" ls-tree "${outer_commit}" fdaPDE/core | awk '{print $3}')"
 if [[ -z "${core_commit}" ]]; then
   echo "Error: ${outer_branch} does not record the fdaPDE/core submodule" >&2
+  exit 1
+fi
+if [[ -n "${expected_core_commit}" && "${core_commit}" != "${expected_core_commit}" ]]; then
+  echo "Error: outer ${outer_commit} records core ${core_commit}, expected ${expected_core_commit}" >&2
   exit 1
 fi
 
@@ -95,12 +121,17 @@ core_remote_ref="refs/remotes/origin/${core_branch}"
 git -C "${core_dir}" fetch --quiet origin \
   "+refs/heads/${core_branch}:${core_remote_ref}"
 mapped_core_commit="$(git -C "${core_dir}" rev-parse "${core_remote_ref}")"
-if [[ "${mapped_core_commit}" != "${core_commit}" ]]; then
+if [[ -z "${expected_outer_commit}" && "${mapped_core_commit}" != "${core_commit}" ]]; then
   echo "Error: ${outer_branch} records core ${core_commit}, but ${core_branch} is ${mapped_core_commit}" >&2
   exit 1
 fi
+if [[ -n "${expected_outer_commit}" ]] &&
+   ! git -C "${core_dir}" merge-base --is-ancestor "${core_commit}" "${core_remote_ref}"; then
+  echo "Error: recorded core ${core_commit} is not on ${core_branch}" >&2
+  exit 1
+fi
 
-git -C "${core_dir}" checkout --quiet -B "${core_branch}" "${core_remote_ref}"
+git -C "${core_dir}" checkout --quiet -B "${core_branch}" "${core_commit}"
 git -C "${core_dir}" branch --quiet \
   --set-upstream-to="origin/${core_branch}" "${core_branch}"
 checked_out_core="$(git -C "${core_dir}" rev-parse HEAD)"

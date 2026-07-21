@@ -28,6 +28,7 @@ Historical simulation suites are intentionally not migrated here.
 - Expected core gitlink: `1b75249a7b49ccee72cb94207a9dc5daaa21848c`
 - Application runtime checkout: `libraries/fdaPDE-cpp` (ignored and managed locally)
 - Local bootstrap source: `/Users/pietrodonelli/Documents/University/projects/fPLS/fPLS-simulation-study/libraries/fdaPDE-cpp`
+- The `hpc-torque` managed clone verifies and checks out the expected outer/core commits rather than following a later branch tip.
 
 The native application driver uses the new fdaPDE C++ `fPLS` implementation. It does not use the obsolete `fPLS-R`/`fdaPDE2` wrapper.
 

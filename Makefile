@@ -74,6 +74,8 @@ PATH_FDAPDE_CPP := $(call config_value,PATH_FDAPDE_CPP)
 FDAPDE_CPP_REPOSITORY := $(call config_value,FDAPDE_CPP_REPOSITORY)
 FDAPDE_CORE_REPOSITORY := $(call config_value,FDAPDE_CORE_REPOSITORY)
 FDAPDE_CPP_BRANCH := $(call config_value,FDAPDE_CPP_BRANCH)
+FDAPDE_CPP_COMMIT := $(call config_value,FDAPDE_CPP_COMMIT)
+FDAPDE_CORE_COMMIT := $(call config_value,FDAPDE_CORE_COMMIT)
 FDAPDE_CPP_MANAGED := $(call config_value,FDAPDE_CPP_MANAGED)
 SINGULARITY_IMAGE := $(call config_value,SINGULARITY_IMAGE)
 SINGULARITY_IMAGE_SOURCE := $(call config_value,SINGULARITY_IMAGE_SOURCE)
@@ -170,6 +172,8 @@ build:
 		printf 'Installation completed.\n\n' && \
 		printf '\nInstalling fdaPDE-cpp...\n' && \
 		FDAPDE_CPP_MANAGED="$(FDAPDE_CPP_MANAGED)" \
+		FDAPDE_CPP_COMMIT="$(FDAPDE_CPP_COMMIT)" \
+		FDAPDE_CORE_COMMIT="$(FDAPDE_CORE_COMMIT)" \
 		FDAPDE_CORE_REPOSITORY="$(FDAPDE_CORE_REPOSITORY)" \
 			./cpp/clone_fdapde.sh "$(FDAPDE_CPP_REPOSITORY)" "$(FDAPDE_CPP_BRANCH)" "$(PATH_FDAPDE_CPP)" && \
 		printf 'Installation completed.\n\n' && \

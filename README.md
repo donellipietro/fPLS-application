@@ -113,7 +113,9 @@ The `hpc-torque` profile is aligned with canonical testbench runtime commit
 `89ba803b85c76b40aab8af2037b779fd29677924`. It submits compilation, distributes option
 files across PBS workers, exports the configured environment, and schedules aggregation
 with an `afterok` dependency. Each fPLS fit is single-threaded; independent outer folds run
-in parallel.
+in parallel. The managed cluster clone is pinned to outer commit
+`ecbf23ef37571174c438ab68c3d21d7ecd5cf18f` and core commit
+`1b75249a7b49ccee72cb94207a9dc5daaa21848c` on their mapped fPLS branches.
 
 ```sh
 TESTBENCH_PATH_APPLICATION_DATA=/cluster/path/to/brain-data make build PROFILE=hpc-torque
