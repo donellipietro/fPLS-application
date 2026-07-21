@@ -3,10 +3,10 @@
 # - Desc: Application separation diagnostics for sequential component prefixes.
 # = ========================================================================== =
 
-simple_auc <- function(labels, scores) {
+ctrl_auc <- function(labels, scores) {
   labels <- as.character(labels)
-  pos <- scores[labels == "SCHZ"]
-  neg <- scores[labels == "CTRL"]
+  pos <- scores[labels == "CTRL"]
+  neg <- scores[labels == "SCHZ"]
   if (length(pos) == 0L || length(neg) == 0L) return(NaN)
   mean(outer(pos, neg, FUN = function(a, b) (a > b) + 0.5 * (a == b)))
 }
@@ -18,7 +18,7 @@ best_threshold_metrics <- function(labels, scores) {
     return(c(threshold = NaN, sensitivity = NaN, specificity = NaN))
   }
   metrics <- t(vapply(candidates, function(threshold) {
-    predicted <- ifelse(scores >= threshold, "SCHZ", "CTRL")
+    predicted <- ifelse(scores >= threshold, "CTRL", "SCHZ")
     sensitivity <- mean(predicted[labels == "SCHZ"] == "SCHZ")
     specificity <- mean(predicted[labels == "CTRL"] == "CTRL")
     c(threshold = threshold, sensitivity = sensitivity, specificity = specificity)
@@ -26,8 +26,8 @@ best_threshold_metrics <- function(labels, scores) {
   metrics[which.max(metrics[, "sensitivity"] + metrics[, "specificity"]), ]
 }
 
-orient_schz_scores <- function(labels, scores) {
-  raw_auc <- simple_auc(labels, scores)
+orient_ctrl_scores <- function(labels, scores) {
+  raw_auc <- ctrl_auc(labels, scores)
   if (is.finite(raw_auc) && raw_auc < 0.5) {
     return(list(scores = -scores, sign_flipped = TRUE))
   }
@@ -46,12 +46,12 @@ evaluate_results <- function(model, data, test_options) {
 
   n_comp <- test_options$model$n_comp
   separation <- do.call(rbind, lapply(seq_len(n_comp), function(h) {
-    oriented <- orient_schz_scores(data$labels, as.numeric(model$results$Y_hat[[h]]))
+    oriented <- orient_ctrl_scores(data$labels, as.numeric(model$results$Y_hat[[h]]))
     scores <- oriented$scores
     threshold <- best_threshold_metrics(data$labels, scores)
     data.frame(
       prefix_components = h,
-      auc = simple_auc(data$labels, scores),
+      auc = ctrl_auc(data$labels, scores),
       sign_flipped = oriented$sign_flipped,
       threshold = threshold[["threshold"]],
       sensitivity = threshold[["sensitivity"]],

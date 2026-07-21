@@ -31,13 +31,13 @@ fit_maximum_margin_boundary <- function(scores, labels, cost = 1e6) {
   standardized_normal <- drop(t(model$coefs) %*% model$SV)
   standardized_intercept <- -drop(model$rho)
   decision <- drop(standardized %*% standardized_normal + standardized_intercept)
-  if (mean(decision[labels == "SCHZ"]) < mean(decision[labels == "CTRL"])) {
+  if (mean(decision[labels == "CTRL"]) < mean(decision[labels == "SCHZ"])) {
     standardized_normal <- -standardized_normal
     standardized_intercept <- -standardized_intercept
     decision <- -decision
   }
 
-  class_sign <- ifelse(labels == "SCHZ", 1, -1)
+  class_sign <- ifelse(labels == "CTRL", 1, -1)
   canonical_margins <- class_sign * decision
   if (min(canonical_margins) < 1 - 1e-4) {
     stop("linear SVM did not reach the hard-margin solution at cost = ", cost)
@@ -47,9 +47,9 @@ fit_maximum_margin_boundary <- function(scores, labels, cost = 1e6) {
   score_intercept <- standardized_intercept - sum(standardized_normal * score_center / score_scale)
   score_normal_norm <- sqrt(sum(score_normal^2))
   standardized_normal_norm <- sqrt(sum(standardized_normal^2))
-  predicted <- ifelse(decision >= 0, "SCHZ", "CTRL")
-  pos <- decision[labels == "SCHZ"]
-  neg <- decision[labels == "CTRL"]
+  predicted <- ifelse(decision >= 0, "CTRL", "SCHZ")
+  pos <- decision[labels == "CTRL"]
+  neg <- decision[labels == "SCHZ"]
 
   list(
     score_normal = score_normal,

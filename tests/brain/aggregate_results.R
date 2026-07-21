@@ -243,9 +243,9 @@ if (requested == "h_stability" && "h_stability_H6" %in% names(all_evaluations)) 
     paraview_fields[[glue::glue("beta_H{h}")]] <- beta_h
     paraview_fields[[glue::glue("gamma_H{h}")]] <- gamma_h
     paraview_fields[[glue::glue("f_H{h}")]] <- f_h
-    paraview_fields[[glue::glue("beta_SCHZ_unit_H{h}")]] <- mass_unit(-beta_h)
-    paraview_fields[[glue::glue("gamma_SCHZ_unit_H{h}")]] <- mass_unit(gamma_h)
-    paraview_fields[[glue::glue("f_SCHZ_unit_H{h}")]] <- mass_unit(f_h)
+    paraview_fields[[glue::glue("beta_CTRL_unit_H{h}")]] <- mass_unit(beta_h)
+    paraview_fields[[glue::glue("gamma_CTRL_unit_H{h}")]] <- mass_unit(gamma_h)
+    paraview_fields[[glue::glue("f_CTRL_unit_H{h}")]] <- mass_unit(f_h)
   }
   paraview_dir <- file.path(aggregate_dir, "paraview")
   dir.create(paraview_dir, recursive = TRUE, showWarnings = FALSE)
@@ -268,7 +268,7 @@ if (requested == "h_stability" && "h_stability_H6" %in% names(all_evaluations)) 
     "",
     "The script opens a 3 x 4 linked-camera scene and writes a PVSM state plus a PNG preview.",
     "Rows: primary SVM slider loading f = R D q, then classifier controls gamma and beta.",
-    "Columns: H = 3, 4, 5, 6. Scene fields are FEM-mass normalized and oriented positive toward SCHZ.",
+    "Columns: H = 3, 4, 5, 6. Scene fields are FEM-mass normalized and oriented positive toward CTRL.",
     "The VTU also contains the raw beta_H*, gamma_H*, and f_H* coefficient arrays."
   ), file.path(paraview_dir, "README.txt"))
 
@@ -334,6 +334,12 @@ write_json(
       as.character(min(separation$prefix_components[separation$perfect_separation]))
     } else "not_evaluated",
     prefix_diagnostics = "computed_from_single_H6_fit",
+    separation_orientation = list(
+      score_positive_class = "CTRL",
+      auc_positive_class = "CTRL",
+      sensitivity_class = "SCHZ",
+      specificity_class = "CTRL"
+    ),
     decision_boundary_loading_stability = if (is.null(loading_stability)) {
       "requires_H6_fit"
     } else {
@@ -361,7 +367,10 @@ write_json(
       list(
         classifier = "linear_C_SVM_cost_1e6_verified_hard_margin",
         score_scaling = "componentwise_training_mean_and_standard_deviation_prefix_consistent",
-        class_orientation = "positive_is_SCHZ",
+        class_orientation = "positive_is_CTRL_matching_paper_response_coding",
+        auc_positive_class = "CTRL",
+        sensitivity_class = "SCHZ",
+        specificity_class = "CTRL",
         reconstruction_loading = "R_H_times_score_SD_times_unit_standardized_SVM_normal",
         classifier_coefficient = "W_H_times_inverse_RtW_times_score_space_boundary_normal",
         spatial_metric = "tetrahedral_P1_FEM_mass_correlation_with_H3",

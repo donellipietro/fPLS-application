@@ -82,9 +82,9 @@ center = [
 camera_span = max(bounds[3] - bounds[2], bounds[5] - bounds[4])
 
 rows = [
-    ("f", "SVM slider loading"),
-    ("gamma", "SVM coefficient (control)"),
-    ("beta", "PLS beta (control)"),
+    ("f", "SVM slider (CTRL+)"),
+    ("gamma", "SVM coefficient (CTRL+)"),
+    ("beta", "PLS beta (CTRL+)"),
 ]
 components = (3, 4, 5, 6)
 
@@ -92,7 +92,7 @@ row_ranges = {}
 for prefix, _ in rows:
     maximum = 0.0
     for h in components:
-        array = source.PointData[f"{prefix}_SCHZ_unit_H{h}"]
+        array = source.PointData[f"{prefix}_CTRL_unit_H{h}"]
         lower, upper = array.GetRange()
         maximum = max(maximum, abs(lower), abs(upper))
     row_ranges[prefix] = maximum
@@ -107,7 +107,7 @@ for row_index, (prefix, title) in enumerate(rows):
         view.OrientationAxesVisibility = 0
         view.CameraParallelProjection = 1
 
-        field = f"{prefix}_SCHZ_unit_H{h}"
+        field = f"{prefix}_CTRL_unit_H{h}"
         display = Show(source, view)
         display.Representation = "Surface"
         ColorBy(display, ("POINTS", field))
