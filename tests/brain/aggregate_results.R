@@ -16,8 +16,11 @@ source("src/utils/directories.R")
 source("src/utils/options.R")
 source("tests/brain/config.R")
 source("tests/brain/utils/generate_options.R")
+source("tests/brain/utils/data_prep.R")
+source("tests/brain/utils/cross_validation.R")
 source("tests/brain/utils/models_evaluation.R")
 source("tests/brain/utils/loading_stability.R")
+source("tests/brain/utils/cv_aggregation.R")
 source("tests/brain/utils/maximum_margin_stability.R")
 source("tests/brain/utils/paraview_export.R")
 
@@ -91,6 +94,69 @@ if (length(failed_names) > 0L) {
   )
   cat("Native application fit failed; see the scenario log and application_run_status.json.\n")
   quit(save = "no", status = 2)
+}
+
+if (requested == "out_of_sample") {
+  expected_fits <- sum(vapply(families, function(family) {
+    length(list.files(file.path(path_list$queue, family), pattern = "[.]json$"))
+  }, integer(1)))
+  if (length(all_evaluations) != expected_fits) {
+    write_json(
+      list(
+        schema_version = 1L,
+        requested = requested,
+        run_complete = FALSE,
+        status = "missing_cross_validation_fits",
+        completed_fits = length(all_evaluations),
+        expected_fits = expected_fits
+      ),
+      file.path(aggregate_dir, "application_run_status.json"),
+      auto_unbox = TRUE,
+      pretty = TRUE
+    )
+    stop(glue::glue("CV aggregation found {length(all_evaluations)} of {expected_fits} expected fits"))
+  }
+  image_dir <- file.path(cfg$PATH_IMAGES, test_suite, "aggregate", requested)
+  cv <- aggregate_cv_results(all_evaluations, aggregate_dir, image_dir, cfg)
+  write_json(
+    list(
+      schema_version = 1L,
+      requested = requested,
+      run_complete = TRUE,
+      status = "complete",
+      design = list(
+        method = "repeated_stratified_outer_cross_validation",
+        repeats = cv$repeats,
+        folds = cv$folds,
+        native_fits = cv$fits,
+        outer_split_unit = "subject",
+        leakage_control = "centering_response_recoding_GCV_threshold_score_scaling_and_SVM_tuning_training_only",
+        native_fit = glue::glue("one_progressive_H{cv$native_components}_fit_per_outer_fold"),
+        primary_H = min(3L, cv$native_components),
+        sensitivity_H = setdiff(cv$evaluated_components, min(3L, cv$native_components)),
+        imbalance_handling = "stratified_folds_inverse_frequency_SVM_weights_and_class_sensitive_metrics"
+      ),
+      prediction = list(
+        projection = "sequential_residual_projection_matching_native_fPLS_deflation",
+        classifiers = c("PLS reconstructed response with training threshold", "class-weighted linear SVM"),
+        positive_score_orientation = "CTRL",
+        primary_metrics = c("SCHZ sensitivity", "SCHZ average precision", "SCHZ ROC AUC", "CTRL specificity", "balanced accuracy", "MCC")
+      ),
+      loading_reproducibility = list(
+        quantities = c("Paper response loading", "SVM slider loading"),
+        comparison = "pairwise_between_outer_training_fits_within_each_repeat",
+        metric = "tetrahedral_P1_FEM_mass_correlation",
+        orientation = "fixed_CTRL_positive_without_post_hoc_sign_alignment"
+      ),
+      uncertainty = "q025_and_q975_are_empirical_repeat_variability_not_formal_confidence_intervals",
+      maximum_projection_abs_error = cv$max_projection_error
+    ),
+    file.path(aggregate_dir, "application_run_status.json"),
+    auto_unbox = TRUE,
+    pretty = TRUE
+  )
+  cat("Out-of-sample CV aggregation completed.\n")
+  quit(save = "no", status = 0)
 }
 
 separation <- do.call(rbind, lapply(names(all_evaluations), function(name) {

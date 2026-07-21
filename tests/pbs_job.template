@@ -1,0 +1,12 @@
+#!/bin/bash
+set -euo pipefail
+cd '@PATH_REPO@'
+set -a
+source '@PROJECT_DIR@/.env'
+set +a
+export SMOKE_TEST='@SMOKE_TEST@'
+export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 VECLIB_MAXIMUM_THREADS=1
+
+while IFS= read -r option_file; do
+  Rscript 'tests/@TEST_SUITE@/main.R' '@TEST_NAME@' "${option_file}"
+done < '@MANIFEST@'

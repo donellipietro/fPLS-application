@@ -35,6 +35,9 @@ orient_ctrl_scores <- function(labels, scores) {
 }
 
 evaluate_results <- function(model, data, test_options) {
+  if (isTRUE(test_options$cross_validation$enabled)) {
+    return(evaluate_cv_model(model, data, test_options))
+  }
   if (!identical(model$status, 0L)) {
     return(list(
       failed = TRUE,

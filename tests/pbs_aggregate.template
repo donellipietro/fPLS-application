@@ -1,0 +1,7 @@
+#!/bin/bash
+set -euo pipefail
+cd '@PATH_REPO@'
+set -a
+source '@PROJECT_DIR@/.env'
+set +a
+Rscript 'tests/@TEST_SUITE@/aggregate_results.R' '@TEST_NAME@'

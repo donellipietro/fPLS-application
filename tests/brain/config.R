@@ -6,7 +6,7 @@
 TEST_SUITE <- "fPLS brain application"
 test_suite <- "brain"
 
-test_groups <- list(all = c("smoke_overall_mean", "h_stability"))
+test_groups <- list(all = c("smoke_overall_mean", "h_stability", "out_of_sample"))
 
 FORCE_FIT <- FALSE
 FORCE_EVALUATE <- FALSE

@@ -11,7 +11,8 @@ The application compares control and schizophrenia groups using imputed brain co
 - Fit a single sequential `H = 6` model and report prefix-wise separation diagnostics for `H = 3:6`; `H = 3` remains the exploratory setting to be verified as the first prefix with perfect in-sample separation.
 - Use fPLS for dimension reduction, then estimate the maximum-margin linear boundary in each standardized score prefix `H = 3:6`. This is an in-sample exploratory boundary, not a cross-validated diagnostic classifier.
 - Map each score-space boundary to both its reconstructed connectivity pattern and its exact functional classifier coefficient, then compare both maps with their `H = 3` references using tetrahedral FEM mass correlations.
-- This initial run does not estimate loading stability across distinct fits, because the requested prefixes come from one sequential fit.
+- Estimate out-of-sample performance with 10 repeats of stratified 5-fold CV. Each outer fold fits one progressive `H = 6` model, evaluates `H = 3:6`, and keeps the outer test subjects untouched by centering, response recoding, GCV, thresholds, score scaling, and SVM fitting.
+- Compare the paper response loading and the SVM slider loading across distinct outer training fits with fixed CTRL orientation and tetrahedral FEM mass correlations. No post-hoc sign flip is used.
 - Record selected lambdas, component iterations, objective/monotonicity diagnostics, non-finite/failure status, wall-clock time, peak RAM, runtime profile, and exact fdaPDE commits.
 
 Raw brain data and generated outputs are intentionally outside Git. The default local data path is the historical ignored application input folder:
@@ -80,5 +81,48 @@ paraview --script=results/brain/aggregate/h_stability/paraview/maximum_margin_co
 
 The scene uses response-oriented, FEM-mass-normalized fields for shape comparison; the same
 VTU retains the unnormalized coefficient arrays.
+
+## Out-Of-Sample Analysis
+
+The production study creates 50 independent outer fits: 5 stratified folds by 10 repeats.
+Every subject receives one held-out prediction per repeat. `H = 3` is the primary analysis;
+`H = 4:6` is a declared sensitivity analysis and is not selected using the held-out data.
+
+Two classifiers are reported. The first reconstructs the scalar fPLS response and learns its
+threshold on the outer training set. The second is an inverse-frequency-weighted linear SVM
+in standardized fPLS score space, with its cost selected using only outer-training data.
+Held-out scores are computed by the same sequential projection and deflation used by native
+fPLS, rather than by multiplying the data by an unrelated coefficient vector.
+
+Run the two-fit, one-component plumbing check locally:
+
+```sh
+SMOKE_TEST=1 make run_test TEST_SUITE=brain TEST_NAME=out_of_sample
+```
+
+Production outputs are written to `results/brain/aggregate/out_of_sample/`. They include
+fold and pooled out-of-fold metrics, subject predictions, selected lambdas, SVM tuning,
+wall time and peak RAM, and cross-fit loading correlations. The primary imbalance-aware
+metrics are SCHZ sensitivity, SCHZ average precision, SCHZ ROC AUC, CTRL specificity,
+balanced accuracy, and MCC. Quantiles across the 10 repeats describe split variability;
+they are not formal confidence intervals.
+
+## Torque Cluster
+
+The `hpc-torque` profile is aligned with canonical testbench runtime commit
+`89ba803b85c76b40aab8af2037b779fd29677924`. It submits compilation, distributes option
+files across PBS workers, exports the configured environment, and schedules aggregation
+with an `afterok` dependency. Each fPLS fit is single-threaded; independent outer folds run
+in parallel.
+
+```sh
+TESTBENCH_PATH_APPLICATION_DATA=/cluster/path/to/brain-data make build PROFILE=hpc-torque
+make run_test TEST_SUITE=brain TEST_NAME=out_of_sample
+```
+
+The application defaults to at most 15 workers, one CPU and 16 GB per worker, with a
+12-hour wall-time request. `PBS_MAX_JOBS=50` requests one worker per fit when the scheduler
+policy permits it. `PBS_QUEUE`, `PBS_ACCOUNT`, `PBS_MEM`, and `PBS_TIME` are available as
+run-time overrides. Preview submissions with `PBS_DRY_RUN=1`.
 
 See [docs/provenance.md](docs/provenance.md) for source, template, native-stack, and data-provenance details.

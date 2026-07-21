@@ -17,6 +17,7 @@ source("src/utils/load_results_utils.R")
 source("src/utils/options.R")
 source("tests/brain/config.R")
 source("tests/brain/utils/data_prep.R")
+source("tests/brain/utils/cross_validation.R")
 source("tests/brain/utils/wrappers.R")
 source("tests/brain/utils/fit_and_evaluate.R")
 source("tests/brain/utils/models_evaluation.R")
@@ -41,13 +42,34 @@ cat(glue::glue("- Running: {test_suite} / {test_options$name_test}\n", .trim = F
 path_list$batch <- config_path(path_list$results, "batch_1")
 mkdir(path_list$batch)
 
-data_file <- file.path(path_list$batch, "prepared_data.rds")
-if (file.exists(data_file) && !FORCE_FIT) {
+is_cv <- isTRUE(test_options$cross_validation$enabled)
+data_file <- file.path(path_list$batch, if (is_cv) "cv_split_provenance.rds" else "prepared_data.rds")
+if (!is_cv && file.exists(data_file) && !FORCE_FIT) {
   data <- readRDS(data_file)
   cat("- Reuse prepared data\n")
 } else {
-  data <- load_brain_application_data(test_options$data$source_path)
-  saveRDS(data, data_file)
+  full_data <- load_brain_application_data(test_options$data$source_path)
+  data <- if (is_cv) {
+    prepare_brain_cv_split(
+      full_data,
+      test_options$cross_validation$n_folds,
+      test_options$cross_validation$repeat_index,
+      test_options$cross_validation$fold_index,
+      test_options$cross_validation$seed
+    )
+  } else full_data
+  saveRDS(
+    if (is_cv) {
+      list(
+        cross_validation = data$cross_validation[c(
+          "n_folds", "repeat_index", "fold_index", "seed", "train_indices", "test_indices", "test_counts"
+        )],
+        train_counts = data$counts,
+        training_overall_mean = data$overall_mean
+      )
+    } else data,
+    data_file
+  )
   write_json(
     list(
       schema_version = 1L,
@@ -57,6 +79,15 @@ if (file.exists(data_file) && !FORCE_FIT) {
       n_subjects = data$dimensions$n_subjects,
       n_nodes = data$dimensions$n_nodes,
       n_tetrahedra = data$dimensions$n_tetrahedra,
+      cross_validation = if (is_cv) list(
+        repeat_index = data$cross_validation$repeat_index,
+        fold_index = data$cross_validation$fold_index,
+        n_folds = data$cross_validation$n_folds,
+        train_indices = data$cross_validation$train_indices,
+        test_indices = data$cross_validation$test_indices,
+        test_counts = as.list(data$cross_validation$test_counts),
+        leakage_control = "mean_response_GCV_threshold_and_classifier_fit_on_training_only"
+      ) else NULL,
       response_recoding = list(
         CTRL = "sqrt(p_SCHZ / p_CTRL)",
         SCHZ = "-sqrt(p_CTRL / p_SCHZ)"
@@ -66,7 +97,7 @@ if (file.exists(data_file) && !FORCE_FIT) {
     auto_unbox = TRUE,
     pretty = TRUE
   )
-  cat("- Prepared authoritative overall-mean centered data\n")
+  cat(if (is_cv) "- Prepared training-only CV fold\n" else "- Prepared authoritative overall-mean centered data\n")
 }
 
 test_options$batch_index <- 1L

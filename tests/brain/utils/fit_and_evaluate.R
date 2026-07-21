@@ -7,12 +7,27 @@ native_model_matches_options <- function(model, model_name, test_options) {
   if (!identical(model_name, "R1_fPLS") || is.null(model$results$telemetry)) return(FALSE)
   telemetry <- model$results$telemetry
   same <- function(left, right) isTRUE(all.equal(left, right))
+  telemetry_flag <- function(name) {
+    value <- telemetry[[name]]
+    if (is.null(value)) TRUE else isTRUE(value)
+  }
+  split_matches <- if (isTRUE(test_options$cross_validation$enabled)) {
+    observed <- telemetry$provenance$cross_validation_split
+    expected <- test_options$cross_validation[c("n_folds", "repeat_index", "fold_index", "seed")]
+    same(
+      observed[sort(names(observed))],
+      expected[sort(names(expected))]
+    )
+  } else TRUE
   same(telemetry$schema_version, 1L) &&
     identical(telemetry$model, model_name) &&
     same(telemetry$n_components, test_options$model$n_comp) &&
     same(telemetry$max_iter, test_options$regularization$max_iter) &&
     same(telemetry$tolerance, test_options$regularization$tolerance) &&
-    same(as.numeric(telemetry$lambda_grid), test_options$regularization$lambda_grid)
+    same(as.numeric(telemetry$lambda_grid), test_options$regularization$lambda_grid) &&
+    same(telemetry_flag("write_reconstructions"), isTRUE(test_options$output$write_reconstructions)) &&
+    same(telemetry_flag("write_beta"), isTRUE(test_options$output$write_beta)) &&
+    split_matches
 }
 
 fit_and_evaluate_models <- function(path_list, data, domain, batch_index, test_options) {

@@ -32,6 +32,22 @@ SLURM_COMPILE_TIME ?=
 SLURM_COMPILE_JOBS ?=
 SLURM_COMPILE_MODEL ?=
 SLURM_COMPILE_TARGET ?=
+PBS_DRY_RUN ?= 0
+PBS_CPUS ?=
+PBS_MEM ?=
+PBS_TIME ?=
+PBS_MULTI_CPUS ?=
+PBS_MULTI_MEM ?=
+PBS_MULTI_TIME ?=
+PBS_MAX_JOBS ?=
+PBS_QUEUE ?=
+PBS_ACCOUNT ?=
+PBS_AGGREGATE ?= 1
+PBS_COMPILE_CPUS ?=
+PBS_COMPILE_MEM ?=
+PBS_COMPILE_TIME ?=
+PBS_COMPILE_JOBS ?=
+PBS_COMPILE_DRY_RUN ?= 0
 COMPILE_JOBS ?=
 COMPILE_TARGET ?= $(if $(TARGET),$(TARGET),$(if $(EXEC),$(EXEC),$(SOURCE)))
 LINES ?= 40
@@ -174,6 +190,15 @@ compile_all: ensure_env
 		SLURM_ACCOUNT="$(SLURM_ACCOUNT)" \
 		SLURM_QOS="$(SLURM_QOS)" \
 		./cpp/compile_slurm.sh --all; \
+	elif [ "$(COMPILE_STRATEGY)" = "pbs" ]; then \
+		PBS_COMPILE_CPUS="$(PBS_COMPILE_CPUS)" \
+		PBS_COMPILE_MEM="$(PBS_COMPILE_MEM)" \
+		PBS_COMPILE_TIME="$(PBS_COMPILE_TIME)" \
+		PBS_COMPILE_JOBS="$(PBS_COMPILE_JOBS)" \
+		PBS_COMPILE_DRY_RUN="$(PBS_COMPILE_DRY_RUN)" \
+		PBS_QUEUE="$(PBS_QUEUE)" \
+		PBS_ACCOUNT="$(PBS_ACCOUNT)" \
+		./cpp/compile_pbs.sh --all; \
 	else \
 		COMPILE_JOBS="$(COMPILE_JOBS)" ./cpp/compile.sh --all; \
 	fi
@@ -201,6 +226,15 @@ compile: ensure_env
 			SLURM_ACCOUNT="$(SLURM_ACCOUNT)" \
 			SLURM_QOS="$(SLURM_QOS)" \
 			./cpp/compile_slurm.sh "$${args[@]}"; \
+		elif [ "$(COMPILE_STRATEGY)" = "pbs" ]; then \
+			PBS_COMPILE_CPUS="$(PBS_COMPILE_CPUS)" \
+			PBS_COMPILE_MEM="$(PBS_COMPILE_MEM)" \
+			PBS_COMPILE_TIME="$(PBS_COMPILE_TIME)" \
+			PBS_COMPILE_JOBS="$(PBS_COMPILE_JOBS)" \
+			PBS_COMPILE_DRY_RUN="$(PBS_COMPILE_DRY_RUN)" \
+			PBS_QUEUE="$(PBS_QUEUE)" \
+			PBS_ACCOUNT="$(PBS_ACCOUNT)" \
+			./cpp/compile_pbs.sh "$${args[@]}"; \
 		else \
 			COMPILE_JOBS="$(COMPILE_JOBS)" ./cpp/compile.sh "$${args[@]}"; \
 		fi; \
@@ -289,7 +323,8 @@ run_test: ensure_env
 			serial) runner=./tests/run_tests.sh ;; \
 			parallel) runner=./tests/run_tests_parallel.sh ;; \
 			slurm) runner=./tests/run_tests_slurm.sh ;; \
-			*) echo "Unknown TEST_EXECUTION_STRATEGY: $(TEST_EXECUTION_STRATEGY). Use serial, parallel, or slurm."; exit 1 ;; \
+			pbs) runner=./tests/run_tests_pbs.sh ;; \
+			*) echo "Unknown TEST_EXECUTION_STRATEGY: $(TEST_EXECUTION_STRATEGY). Use serial, parallel, slurm, or pbs."; exit 1 ;; \
 		esac; \
 		echo "Running: $(TEST_NAME) from suite $(TEST_SUITE) using $(TEST_EXECUTION_STRATEGY)"; \
 		SLURM_ARRAY_LIMIT="$(SLURM_ARRAY_LIMIT)" \
@@ -314,6 +349,17 @@ run_test: ensure_env
 		SLURM_COMPILE_JOBS="$(SLURM_COMPILE_JOBS)" \
 		SLURM_COMPILE_MODEL="$(SLURM_COMPILE_MODEL)" \
 		SLURM_COMPILE_TARGET="$(SLURM_COMPILE_TARGET)" \
+		PBS_DRY_RUN="$(PBS_DRY_RUN)" \
+		PBS_CPUS="$(PBS_CPUS)" \
+		PBS_MEM="$(PBS_MEM)" \
+		PBS_TIME="$(PBS_TIME)" \
+		PBS_MULTI_CPUS="$(PBS_MULTI_CPUS)" \
+		PBS_MULTI_MEM="$(PBS_MULTI_MEM)" \
+		PBS_MULTI_TIME="$(PBS_MULTI_TIME)" \
+		PBS_MAX_JOBS="$(PBS_MAX_JOBS)" \
+		PBS_QUEUE="$(PBS_QUEUE)" \
+		PBS_ACCOUNT="$(PBS_ACCOUNT)" \
+		PBS_AGGREGATE="$(PBS_AGGREGATE)" \
 		SMOKE_TEST="$(SMOKE_TEST)" \
 		"$$runner" "$(TEST_SUITE)" "$(TEST_NAME)"; \
 	fi

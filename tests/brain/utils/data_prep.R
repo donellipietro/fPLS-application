@@ -14,6 +14,16 @@ assert_brain_data_available <- function(data_dir) {
   }
 }
 
+load_brain_mesh <- function(data_dir) {
+  assert_brain_data_available(data_dir)
+  mesh <- readRDS(file.path(data_dir, "FEMbasis.Rds"))$mesh
+  list(
+    nodes = as.matrix(mesh$nodes),
+    elements = as.matrix(mesh$tetrahedrons),
+    boundary = matrix(as.integer(mesh$nodesmarkers), ncol = 1L)
+  )
+}
+
 recoded_response <- function(labels) {
   labels[labels == "CONTROL"] <- "CTRL"
   labels <- factor(labels)
@@ -35,15 +45,14 @@ recoded_response <- function(labels) {
 load_brain_application_data <- function(data_dir) {
   assert_brain_data_available(data_dir)
 
-  basis <- readRDS(file.path(data_dir, "FEMbasis.Rds"))
+  mesh <- load_brain_mesh(data_dir)
   X <- as.matrix(readRDS(file.path(data_dir, "X_imputed.rds")))
   storage.mode(X) <- "double"
   response <- recoded_response(readRDS(file.path(data_dir, "Ycl.rds"))[, 1])
 
-  mesh <- basis$mesh
-  nodes <- as.matrix(mesh$nodes)
-  elements <- as.matrix(mesh$tetrahedrons)
-  boundary <- matrix(as.integer(mesh$nodesmarkers), ncol = 1L)
+  nodes <- mesh$nodes
+  elements <- mesh$elements
+  boundary <- mesh$boundary
   if (ncol(nodes) != 3L || ncol(elements) != 4L) {
     stop("Expected a volumetric tetrahedral brain mesh")
   }
@@ -69,6 +78,58 @@ load_brain_application_data <- function(data_dir) {
       n_subjects = nrow(X),
       n_nodes = ncol(X),
       n_tetrahedra = nrow(elements)
+    )
+  )
+}
+
+stratified_fold_ids <- function(labels, n_folds, repeat_index, seed = 0L) {
+  labels <- factor(as.character(labels), levels = c("CTRL", "SCHZ"))
+  n_folds <- as.integer(n_folds)
+  if (n_folds < 2L || any(table(labels) < n_folds)) {
+    stop("stratified CV requires at least one subject per class in every fold")
+  }
+
+  set.seed(as.integer(seed) + as.integer(repeat_index) - 1L)
+  fold_ids <- integer(length(labels))
+  for (label in levels(labels)) {
+    indices <- sample(which(labels == label))
+    fold_ids[indices] <- rep(seq_len(n_folds), length.out = length(indices))
+  }
+  fold_ids
+}
+
+prepare_brain_cv_split <- function(data, n_folds, repeat_index, fold_index, seed = 0L) {
+  fold_ids <- stratified_fold_ids(data$labels, n_folds, repeat_index, seed)
+  test_indices <- which(fold_ids == as.integer(fold_index))
+  train_indices <- which(fold_ids != as.integer(fold_index))
+  train_response <- recoded_response(data$labels[train_indices])
+  train_mean <- colMeans(data$X[train_indices, , drop = FALSE])
+
+  list(
+    X_centered = sweep(data$X[train_indices, , drop = FALSE], 2L, train_mean, check.margin = FALSE),
+    Y = train_response$y,
+    labels = train_response$labels,
+    counts = train_response$counts,
+    nodes = data$nodes,
+    elements = data$elements,
+    boundary = data$boundary,
+    overall_mean = train_mean,
+    centering = "training_overall_mean",
+    dimensions = list(
+      n_subjects = length(train_indices),
+      n_nodes = ncol(data$X),
+      n_tetrahedra = nrow(data$elements)
+    ),
+    cross_validation = list(
+      n_folds = as.integer(n_folds),
+      repeat_index = as.integer(repeat_index),
+      fold_index = as.integer(fold_index),
+      seed = as.integer(seed),
+      train_indices = train_indices,
+      test_indices = test_indices,
+      test_X_centered = sweep(data$X[test_indices, , drop = FALSE], 2L, train_mean, check.margin = FALSE),
+      test_labels = factor(as.character(data$labels[test_indices]), levels = c("CTRL", "SCHZ")),
+      test_counts = table(factor(as.character(data$labels[test_indices]), levels = c("CTRL", "SCHZ")))
     )
   )
 }

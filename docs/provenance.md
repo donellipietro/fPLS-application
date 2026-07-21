@@ -8,6 +8,7 @@ This repository is the reviewer-facing fPLS neuroimaging application port.
 - Template remote recorded locally as: `template`
 - Imported commit: `167e8c2ec240e0f247a1853cbe61e9b7d7e3890a`
 - Imported scope: runtime profiles, Makefile runner, C++ compile/run helpers, shared `src/` utilities, runner scripts, and testbench documentation
+- PBS/Torque runtime alignment: canonical template commit `89ba803b85c76b40aab8af2037b779fd29677924` (`Export environment to PBS test jobs`)
 
 The application repository is not the template repository. The template is retained as provenance only.
 
@@ -51,6 +52,10 @@ The response recoding is preserved from the historical workflow after relabeling
 
 The active centering family is the authoritative `overall_mean` family. The historical script's later overwrite to `group_means` is not ported as active behavior.
 
-## Component Diagnostics
+## Component And Out-Of-Sample Diagnostics
 
-The initial native application run requests one sequential `H = 6` fit and evaluates the fitted-response prefixes at `H = 3:6`. This reports in-sample separation by prefix and the first prefix with perfect separation, if any. It does not estimate cross-fit loading stability or verify prefix invariance across distinct fits; that comparison would require separate `H = 3`, `4`, `5`, and `6` fits.
+The exploratory application run requests one sequential `H = 6` fit and evaluates prefixes at `H = 3:6`. This reports in-sample separation and spatial sensitivity within that fit.
+
+The out-of-sample study uses 10 repeats of stratified 5-fold CV. One sequential `H = 6` native model is fitted per outer training fold; its `H = 3:6` prefixes are evaluated without separate prefix refits. The training functional mean, prevalence-weighted response values, GCV-selected lambdas, response threshold, score standardization, and weighted linear SVM are all estimated without outer-test subjects. Test scores use the sequential residual projection defined by the native fPLS projection/deflation steps.
+
+Loading reproducibility is a distinct-fit comparison. Within each repeat, the paper response loading and SVM slider loading are compared pairwise across the five outer training fits using the tetrahedral P1 FEM mass correlation. Both quantities retain their response-derived CTRL-positive orientation; no post-hoc sign alignment is applied.

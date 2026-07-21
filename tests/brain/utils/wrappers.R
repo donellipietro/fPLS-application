@@ -51,6 +51,7 @@ fit_native_model <- function(data, path_list, test_options) {
   raw_dir <- file.path(path_list$batch, "raw", "R1_fPLS")
   input_files <- write_brain_native_inputs(data, raw_dir)
   params_file <- file.path(raw_dir, "params.json")
+  telemetry_file <- file.path(raw_dir, "telemetry.json")
   log_file <- file.path(path_list$logs, glue::glue("log_{test_options$name_test}.txt"))
 
   outer_commit <- git_commit(cfg$PATH_FDAPDE_CPP)
@@ -67,7 +68,12 @@ fit_native_model <- function(data, path_list, test_options) {
       core_commit = core_commit,
       data_path = test_options$data$source_path,
       centering = test_options$data$centering
-    )
+    ),
+    if (isTRUE(test_options$cross_validation$enabled)) list(
+      cross_validation_split = test_options$cross_validation[c(
+        "n_folds", "repeat_index", "fold_index", "seed"
+      )]
+    ) else list()
   )
   params <- list(
     model = "R1_fPLS",
@@ -87,6 +93,8 @@ fit_native_model <- function(data, path_list, test_options) {
     elements_file = input_files$elements,
     boundary_file = input_files$boundary,
     output_dir = raw_dir,
+    write_reconstructions = isTRUE(test_options$output$write_reconstructions),
+    write_beta = isTRUE(test_options$output$write_beta),
     provenance = provenance
   )
   write_json(params, params_file, auto_unbox = TRUE, digits = NA, pretty = TRUE)
@@ -94,14 +102,19 @@ fit_native_model <- function(data, path_list, test_options) {
   binary <- file.path(path_list$cpp_script, "fit_model")
   runner <- file.path(path_list$repo, "cpp", "run.sh")
   command <- glue::glue("{shQuote(runner)} --quiet -- {shQuote(binary)} {shQuote(params_file)}")
+  unlink(telemetry_file)
   cat("- Native fPLS process started; heartbeat every 60 seconds\n")
   run_stats <- run_with_heartbeat(command, log_file)
   cat("- Native fPLS process completed\n")
+  if (!identical(run_stats$status, 0L) && file.exists(telemetry_file)) {
+    warning("resource measurement returned nonzero after the native process wrote completion telemetry")
+    run_stats$status <- 0L
+  }
   if (!identical(run_stats$status, 0L)) {
     return(list(MODE = "R1_fPLS", status = run_stats$status, raw_output_dir = raw_dir))
   }
 
-  telemetry <- fromJSON(file.path(raw_dir, "telemetry.json"), simplifyVector = TRUE)
+  telemetry <- fromJSON(telemetry_file, simplifyVector = TRUE)
   n_comp <- test_options$model$n_comp
   n_units <- nrow(data$X_centered)
   n_nodes <- ncol(data$X_centered)
@@ -139,12 +152,20 @@ fit_native_model <- function(data, path_list, test_options) {
   raw$Y_hat <- lapply(seq_len(n_comp), function(h) {
     read_cpp_matrix(file.path(raw_dir, glue::glue("y_hat_h{h}.csv")))
   })
-  raw$X_hat_locations <- lapply(seq_len(n_comp), function(h) {
-    read_cpp_matrix(file.path(raw_dir, glue::glue("x_hat_locations_h{h}.csv")))
-  })
-  raw$Beta_coefficients <- lapply(seq_len(n_comp), function(h) {
-    read_cpp_matrix(file.path(raw_dir, glue::glue("beta_coefficients_h{h}.csv")))
-  })
+  raw$X_hat_locations <- if (isTRUE(test_options$output$write_reconstructions)) {
+    lapply(seq_len(n_comp), function(h) {
+      read_cpp_matrix(file.path(raw_dir, glue::glue("x_hat_locations_h{h}.csv")))
+    })
+  } else NULL
+  raw$Beta_coefficients <- if (isTRUE(test_options$output$write_beta)) {
+    lapply(seq_len(n_comp), function(h) {
+      read_cpp_matrix(file.path(raw_dir, glue::glue("beta_coefficients_h{h}.csv")))
+    })
+  } else NULL
+
+  if (!isTRUE(test_options$output$retain_native_inputs)) {
+    unlink(unlist(input_files, use.names = FALSE))
+  }
 
   list(
     MODE = "R1_fPLS",

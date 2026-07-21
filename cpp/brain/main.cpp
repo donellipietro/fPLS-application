@@ -41,6 +41,8 @@ int run_application(const json& params) {
     const double fixed_direction_lambda = params.at("fixed_direction_lambda").get<double>();
     const double fixed_loading_lambda = params.at("fixed_loading_lambda").get<double>();
     const std::filesystem::path output_dir(params.at("output_dir").get<std::string>());
+    const bool write_reconstructions = params.value("write_reconstructions", true);
+    const bool write_beta = params.value("write_beta", true);
 
     if (params.at("center").get<bool>()) {
         throw std::runtime_error("R-side overall centering is required; native centering must stay false");
@@ -135,16 +137,17 @@ int run_application(const json& params) {
     json component_files = json::array();
     for (int h = 1; h <= n_comp; ++h) {
         const std::string suffix = "_h" + std::to_string(h) + ".csv";
-        const matrix_t beta = model.Beta(h);
         write_csv(output_file(output_dir, "y_hat" + suffix), model.fitted(h));
-        write_csv(output_file(output_dir, "x_hat_locations" + suffix), model.reconstructed(h));
-        write_csv(output_file(output_dir, "beta_coefficients" + suffix), beta);
-        component_files.push_back(json {
-          {"component", h},
-          {"y_hat", "y_hat" + suffix},
-          {"x_hat_locations", "x_hat_locations" + suffix},
-          {"beta_coefficients", "beta_coefficients" + suffix}
-        });
+        json files {{"component", h}, {"y_hat", "y_hat" + suffix}};
+        if (write_reconstructions) {
+            write_csv(output_file(output_dir, "x_hat_locations" + suffix), model.reconstructed(h));
+            files["x_hat_locations"] = "x_hat_locations" + suffix;
+        }
+        if (write_beta) {
+            write_csv(output_file(output_dir, "beta_coefficients" + suffix), model.Beta(h));
+            files["beta_coefficients"] = "beta_coefficients" + suffix;
+        }
+        component_files.push_back(std::move(files));
     }
     const auto output_end = std::chrono::steady_clock::now();
 
@@ -164,6 +167,8 @@ int run_application(const json& params) {
     telemetry_json["center"] = false;
     telemetry_json["calibration"] = calibration;
     telemetry_json["fit_includes_gcv"] = calibration == "gcv";
+    telemetry_json["write_reconstructions"] = write_reconstructions;
+    telemetry_json["write_beta"] = write_beta;
     telemetry_json["n_units"] = X.rows();
     telemetry_json["n_locations"] = X.cols();
     telemetry_json["n_responses"] = Y.cols();
