@@ -18,6 +18,7 @@ source("tests/brain/config.R")
 source("tests/brain/utils/generate_options.R")
 source("tests/brain/utils/models_evaluation.R")
 source("tests/brain/utils/loading_stability.R")
+source("tests/brain/utils/maximum_margin_stability.R")
 
 args <- commandArgs(trailingOnly = TRUE)
 requested <- if (length(args)) args[1] else name_main_test_default
@@ -127,13 +128,23 @@ if (!is.null(separation)) {
 
 loading_stability <- NULL
 beta_stability_summary <- NULL
+maximum_margin_summary <- NULL
+classifier_formula_max_abs_error <- NULL
 if (requested == "h_stability" && "h_stability_H6" %in% names(all_evaluations)) {
   raw_dir <- file.path(path_list$results, "h_stability", "h_stability_H6", "batch_1", "raw", "R1_fPLS")
+  batch_dir <- dirname(dirname(raw_dir))
+  image_dir <- file.path(cfg$PATH_IMAGES, test_suite, "aggregate", requested)
+  dir.create(image_dir, recursive = TRUE, showWarnings = FALSE)
   points <- as.matrix(suppressWarnings(read.csv(file.path(raw_dir, "points.csv"), check.names = FALSE)))
   elements <- as.matrix(suppressWarnings(read.csv(file.path(raw_dir, "elements.csv"), check.names = FALSE)))
+  x_loadings <- as.matrix(suppressWarnings(read.csv(
+    file.path(raw_dir, "x_loadings_coefficients.csv"),
+    check.names = FALSE
+  )))
+  y_loadings <- as.matrix(suppressWarnings(read.csv(file.path(raw_dir, "y_loadings.csv"), check.names = FALSE)))
   loading_stability <- first_rotated_loading_stability(
-    x_loadings = as.matrix(suppressWarnings(read.csv(file.path(raw_dir, "x_loadings_coefficients.csv"), check.names = FALSE))),
-    y_loadings = as.matrix(suppressWarnings(read.csv(file.path(raw_dir, "y_loadings.csv"), check.names = FALSE))),
+    x_loadings = x_loadings,
+    y_loadings = y_loadings,
     points = points,
     elements = elements
   )
@@ -156,6 +167,114 @@ if (requested == "h_stability" && "h_stability_H6" %in% names(all_evaluations)) 
   ggsave(
     file.path(image_dir, "decision_boundary_and_beta_stability_by_H.png"),
     stability_plot,
+    width = 7,
+    height = 4.5,
+    dpi = 180
+  )
+
+  prepared_data <- readRDS(file.path(batch_dir, "prepared_data.rds"))
+  x_directions <- as.matrix(suppressWarnings(read.csv(
+    file.path(raw_dir, "x_space_directions_coefficients.csv"),
+    check.names = FALSE
+  )))
+  maximum_margin_summary <- maximum_margin_prefix_sensitivity(
+    scores = as.matrix(suppressWarnings(read.csv(file.path(raw_dir, "x_latent_scores.csv"), check.names = FALSE))),
+    x_loadings = x_loadings,
+    x_directions = x_directions,
+    labels = prepared_data$labels,
+    points = points,
+    elements = elements
+  )
+
+  classifier_formula_max_abs_error <- max(vapply(3:6, function(h) {
+    directions_h <- x_directions[, seq_len(h), drop = FALSE]
+    loadings_h <- x_loadings[, seq_len(h), drop = FALSE]
+    reconstructed_beta <- directions_h %*% solve(
+      crossprod(loadings_h, directions_h),
+      as.numeric(y_loadings[1, seq_len(h)])
+    )
+    max(abs(reconstructed_beta - beta_coefficients[[as.character(h)]]))
+  }, numeric(1)))
+  if (classifier_formula_max_abs_error > 1e-10) {
+    stop("score-space to functional coefficient reconstruction does not match native Beta(h)")
+  }
+
+  write.csv(
+    maximum_margin_summary$diagnostics,
+    file.path(aggregate_dir, "maximum_margin_sensitivity_by_H.csv"),
+    row.names = FALSE
+  )
+  write.csv(
+    maximum_margin_summary$spatial_stability,
+    file.path(aggregate_dir, "maximum_margin_spatial_stability_by_H.csv"),
+    row.names = FALSE
+  )
+  write.csv(
+    maximum_margin_summary$boundaries,
+    file.path(aggregate_dir, "maximum_margin_boundaries_by_H.csv"),
+    row.names = FALSE
+  )
+  map_dir <- file.path(aggregate_dir, "maximum_margin_maps")
+  dir.create(map_dir, recursive = TRUE, showWarnings = FALSE)
+  for (h in 3:6) {
+    write.csv(
+      data.frame(coefficient = drop(maximum_margin_summary$reconstruction_maps[[as.character(h)]])),
+      file.path(map_dir, glue::glue("reconstruction_loading_h{h}.csv")),
+      row.names = FALSE
+    )
+    write.csv(
+      data.frame(coefficient = drop(maximum_margin_summary$classifier_maps[[as.character(h)]])),
+      file.path(map_dir, glue::glue("classifier_coefficient_h{h}.csv")),
+      row.names = FALSE
+    )
+  }
+
+  margin_plot <- ggplot(
+    maximum_margin_summary$diagnostics,
+    aes(retained_components, geometric_margin_standardized_scores)
+  ) +
+    geom_line(linewidth = 0.7, colour = "#007C91") +
+    geom_point(size = 2, colour = "#007C91") +
+    geom_text(aes(label = paste0("SV: ", support_vectors)), vjust = -0.8, size = 3.2) +
+    scale_x_continuous(breaks = 3:6) +
+    scale_y_continuous(expand = expansion(mult = c(0.05, 0.15))) +
+    labs(x = "Retained components H", y = "Maximum geometric margin (standardized scores)") +
+    theme_bw()
+  ggsave(
+    file.path(image_dir, "maximum_margin_by_H.png"),
+    margin_plot,
+    width = 7,
+    height = 4.5,
+    dpi = 180
+  )
+
+  correlation_plot_data <- rbind(
+    data.frame(
+      retained_components = maximum_margin_summary$diagnostics$retained_components,
+      quantity = "Score-space decision",
+      correlation = maximum_margin_summary$diagnostics$decision_correlation_with_H3
+    ),
+    data.frame(
+      retained_components = maximum_margin_summary$spatial_stability$retained_components,
+      quantity = maximum_margin_summary$spatial_stability$quantity,
+      correlation = maximum_margin_summary$spatial_stability$mass_correlation
+    )
+  )
+  correlation_plot <- ggplot(
+    correlation_plot_data,
+    aes(retained_components, correlation, colour = quantity)
+  ) +
+    geom_line(linewidth = 0.7) +
+    geom_point(size = 2) +
+    scale_x_continuous(breaks = 3:6) +
+    scale_y_continuous(breaks = seq(0, 1, 0.2)) +
+    coord_cartesian(ylim = c(0, 1)) +
+    labs(x = "Retained components H", y = "Correlation with H=3", colour = NULL) +
+    theme_bw() +
+    theme(legend.position = "top")
+  ggsave(
+    file.path(image_dir, "maximum_margin_correlations_by_H.png"),
+    correlation_plot,
     width = 7,
     height = 4.5,
     dpi = 180
@@ -191,6 +310,19 @@ write_json(
         comparisons = "native_Beta_H4_to_H6",
         definition = "model.Beta(h)_exported_as_beta_coefficients_h.csv",
         metric = "tetrahedral_P1_FEM_mass_relative_norm_without_sign_flip_response_orientation_fixed"
+      )
+    },
+    maximum_margin_sensitivity = if (is.null(maximum_margin_summary)) {
+      "requires_H6_fit"
+    } else {
+      list(
+        classifier = "linear_C_SVM_cost_1e6_verified_hard_margin",
+        score_scaling = "componentwise_training_mean_and_standard_deviation_prefix_consistent",
+        class_orientation = "positive_is_SCHZ",
+        reconstruction_loading = "R_H_times_unit_score_space_boundary_normal",
+        classifier_coefficient = "W_H_times_inverse_RtW_times_score_space_boundary_normal",
+        spatial_metric = "tetrahedral_P1_FEM_mass_correlation_with_H3",
+        classifier_formula_max_abs_error_against_native_beta = classifier_formula_max_abs_error
       )
     },
     distinct_fit_prefix_invariance = "not_applicable_single_progressive_fit",
