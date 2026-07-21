@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import sys
 
 from paraview.simple import (
     AddCameraLink,
@@ -26,12 +27,42 @@ from paraview.simple import (
 
 _DisableFirstRenderCameraReset()
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__)) if "__file__" in globals() else os.getcwd()
-DATA_FILE = os.path.join(BASE_DIR, "maximum_margin_comparison.vtu")
-STATE_FILE = os.path.join(BASE_DIR, "maximum_margin_comparison.pvsm")
 
-if not os.path.exists(DATA_FILE):
-    raise FileNotFoundError(f"Missing generated ParaView data: {DATA_FILE}")
+def find_data_file():
+    candidate_dirs = []
+    configured = os.environ.get("FPLS_PARAVIEW_DATA_DIR")
+    if configured:
+        candidate_dirs.append(configured)
+    script_name = globals().get("__file__")
+    if script_name and not script_name.startswith("<"):
+        candidate_dirs.append(os.path.dirname(os.path.abspath(script_name)))
+    for argument in sys.argv:
+        if argument.startswith("--script="):
+            candidate_dirs.append(os.path.dirname(os.path.abspath(argument.split("=", 1)[1])))
+        elif argument.endswith("maximum_margin_comparison.py"):
+            candidate_dirs.append(os.path.dirname(os.path.abspath(argument)))
+    candidate_dirs.extend([
+        os.getcwd(),
+        os.path.join(
+            os.getcwd(),
+            "results",
+            "brain",
+            "aggregate",
+            "h_stability",
+            "paraview",
+        ),
+    ])
+    for directory in candidate_dirs:
+        candidate = os.path.join(directory, "maximum_margin_comparison.vtu")
+        if os.path.exists(candidate):
+            return os.path.abspath(candidate)
+    searched = "\n  ".join(os.path.abspath(path) for path in candidate_dirs)
+    raise FileNotFoundError(f"Missing maximum_margin_comparison.vtu; searched:\n  {searched}")
+
+
+DATA_FILE = find_data_file()
+BASE_DIR = os.path.dirname(DATA_FILE)
+STATE_FILE = os.path.join(BASE_DIR, "maximum_margin_comparison.pvsm")
 
 RemoveViewsAndLayouts()
 layout = CreateLayout(name="Maximum-margin comparison")
