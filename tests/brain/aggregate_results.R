@@ -266,7 +266,7 @@ if (requested == "h_stability" && "h_stability_H6" %in% names(all_evaluations)) 
     "Run maximum_margin_comparison.py from ParaView's Python Shell, or launch:",
     glue::glue("paraview --script={file.path(paraview_dir, 'maximum_margin_comparison.py')}"),
     "",
-    "The script opens a 3 x 4 linked-camera scene and writes maximum_margin_comparison.pvsm.",
+    "The script opens a 3 x 4 linked-camera scene and writes a PVSM state plus a PNG preview.",
     "Rows: response-oriented beta, SVM classifier coefficient gamma, SVM reconstruction loading f.",
     "Columns: H = 3, 4, 5, 6. Scene fields are FEM-mass normalized and oriented positive toward SCHZ.",
     "The VTU also contains the raw beta_H*, gamma_H*, and f_H* coefficient arrays."

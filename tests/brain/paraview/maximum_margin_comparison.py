@@ -10,11 +10,14 @@ from paraview.simple import (
     CreateView,
     EqualizeViewsBoth,
     GetColorTransferFunction,
+    GetLayout,
+    GetLayouts,
     OpenDataFile,
     RemoveViewsAndLayouts,
     RenameProxy,
     Render,
     ResetCamera,
+    SaveScreenshot,
     SaveState,
     SetActiveSource,
     SetActiveView,
@@ -63,10 +66,9 @@ def find_data_file():
 DATA_FILE = find_data_file()
 BASE_DIR = os.path.dirname(DATA_FILE)
 STATE_FILE = os.path.join(BASE_DIR, "maximum_margin_comparison.pvsm")
+SCREENSHOT_FILE = os.path.join(BASE_DIR, "maximum_margin_comparison.png")
 
 RemoveViewsAndLayouts()
-layout = CreateLayout(name="Maximum-margin comparison")
-layout.SetSize(1800, 1050)
 
 source = OpenDataFile(DATA_FILE)
 RenameProxy(source, "sources", "fPLS maximum-margin fields")
@@ -104,14 +106,6 @@ for row_index, (prefix, title) in enumerate(rows):
         view.Background = [1.0, 1.0, 1.0]
         view.OrientationAxesVisibility = 0
         view.CameraParallelProjection = 1
-        if row_index == 0 and column_index == 0:
-            layout.AssignView(0, view)
-        elif row_index == 0:
-            location = layout.SplitViewHorizontal(view_grid[(row_index, column_index - 1)])
-            layout.AssignView(location, view)
-        else:
-            location = layout.SplitViewVertical(view_grid[(row_index - 1, column_index)])
-            layout.AssignView(location, view)
 
         field = f"{prefix}_SCHZ_unit_H{h}"
         display = Show(source, view)
@@ -121,7 +115,7 @@ for row_index, (prefix, title) in enumerate(rows):
         lookup_table.ApplyPreset("Cool to Warm", True)
         limit = row_ranges[prefix]
         lookup_table.RescaleTransferFunction(-limit, limit)
-        display.SetScalarBarVisibility(view, column_index == len(components) - 1)
+        display.SetScalarBarVisibility(view, False)
 
         label = Text(registrationName=f"{prefix}_H{h}_label", Text=f"{title} | H={h}")
         label_display = Show(label, view)
@@ -140,13 +134,36 @@ for row_index, (prefix, title) in enumerate(rows):
         views.append(view)
         view_grid[(row_index, column_index)] = view
 
+layout = GetLayout(views[0])
+if layout is None:
+    layout = CreateLayout(name="Maximum-margin comparison")
+for candidate_layout in GetLayouts().values():
+    for view in views:
+        if candidate_layout.GetViewLocation(view) != -1:
+            candidate_layout.RemoveView(view)
+layout.Reset()
+layout.SetSize(1800, 1050)
+for row_index in range(len(rows)):
+    for column_index in range(len(components)):
+        view = view_grid[(row_index, column_index)]
+        if row_index == 0 and column_index == 0:
+            layout.AssignView(0, view)
+        elif row_index == 0:
+            location = layout.SplitViewHorizontal(view_grid[(row_index, column_index - 1)]) + 1
+            layout.AssignView(location, view)
+        else:
+            location = layout.SplitViewVertical(view_grid[(row_index - 1, column_index)]) + 1
+            layout.AssignView(location, view)
+
 for index, view in enumerate(views[1:], start=1):
     AddCameraLink(views[0], view, f"maximum_margin_camera_{index}")
 
 EqualizeViewsBoth(layout)
 SetActiveView(views[0])
 SaveState(STATE_FILE)
+SaveScreenshot(SCREENSHOT_FILE, layout, ImageResolution=[1800, 1050])
 Render()
 
 print(f"Loaded {DATA_FILE}")
 print(f"Saved reusable ParaView state to {STATE_FILE}")
+print(f"Saved scene preview to {SCREENSHOT_FILE}")
