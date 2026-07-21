@@ -58,6 +58,7 @@ fit_maximum_margin_boundary <- function(scores, labels, cost = 1e6) {
     score_center = score_center,
     score_scale = score_scale,
     standardized_normal = standardized_normal,
+    unit_standardized_normal = standardized_normal / standardized_normal_norm,
     standardized_intercept = standardized_intercept,
     decision = decision,
     signed_distance = decision / standardized_normal_norm,
@@ -90,7 +91,9 @@ maximum_margin_prefix_sensitivity <- function(
   }), prefixes)
 
   reconstruction_maps <- setNames(lapply(prefixes, function(h) {
-    x_loadings[, seq_len(h), drop = FALSE] %*% fits[[as.character(h)]]$unit_score_normal
+    fit <- fits[[as.character(h)]]
+    slider_direction <- fit$score_scale * fit$unit_standardized_normal
+    x_loadings[, seq_len(h), drop = FALSE] %*% slider_direction
   }), prefixes)
   classifier_maps <- setNames(lapply(prefixes, function(h) {
     directions <- x_directions[, seq_len(h), drop = FALSE]
@@ -129,7 +132,7 @@ maximum_margin_prefix_sensitivity <- function(
           volumes
         ),
         retained_components = h,
-        quantity = "Maximum-margin reconstruction loading"
+        quantity = "Maximum-margin slider loading"
       ),
       transform(
         mass_stability(
@@ -156,13 +159,20 @@ maximum_margin_prefix_sensitivity <- function(
       list(
         score_normal = fit$score_normal,
         unit_score_normal = fit$unit_score_normal,
+        unit_standardized_normal = fit$unit_standardized_normal,
         score_center = fit$score_center,
         score_scale = fit$score_scale
       ),
       pad
     ))
     names(normals) <- unlist(lapply(
-      c("score_normal", "unit_score_normal", "score_center", "score_scale"),
+      c(
+        "score_normal",
+        "unit_score_normal",
+        "unit_standardized_normal",
+        "score_center",
+        "score_scale"
+      ),
       function(name) paste0(name, "_t", seq_len(max_h))
     ))
     normals <- as.data.frame(as.list(normals), check.names = FALSE)

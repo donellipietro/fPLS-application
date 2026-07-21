@@ -82,9 +82,9 @@ center = [
 camera_span = max(bounds[3] - bounds[2], bounds[5] - bounds[4])
 
 rows = [
-    ("beta", "PLS beta (SCHZ oriented)"),
-    ("gamma", "SVM classifier coefficient"),
-    ("f", "SVM reconstruction loading"),
+    ("f", "SVM slider loading"),
+    ("gamma", "SVM coefficient (control)"),
+    ("beta", "PLS beta (control)"),
 ]
 components = (3, 4, 5, 6)
 

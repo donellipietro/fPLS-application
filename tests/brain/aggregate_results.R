@@ -267,7 +267,7 @@ if (requested == "h_stability" && "h_stability_H6" %in% names(all_evaluations)) 
     glue::glue("paraview --script={file.path(paraview_dir, 'maximum_margin_comparison.py')}"),
     "",
     "The script opens a 3 x 4 linked-camera scene and writes a PVSM state plus a PNG preview.",
-    "Rows: response-oriented beta, SVM classifier coefficient gamma, SVM reconstruction loading f.",
+    "Rows: primary SVM slider loading f = R D q, then classifier controls gamma and beta.",
     "Columns: H = 3, 4, 5, 6. Scene fields are FEM-mass normalized and oriented positive toward SCHZ.",
     "The VTU also contains the raw beta_H*, gamma_H*, and f_H* coefficient arrays."
   ), file.path(paraview_dir, "README.txt"))
@@ -362,7 +362,7 @@ write_json(
         classifier = "linear_C_SVM_cost_1e6_verified_hard_margin",
         score_scaling = "componentwise_training_mean_and_standard_deviation_prefix_consistent",
         class_orientation = "positive_is_SCHZ",
-        reconstruction_loading = "R_H_times_unit_score_space_boundary_normal",
+        reconstruction_loading = "R_H_times_score_SD_times_unit_standardized_SVM_normal",
         classifier_coefficient = "W_H_times_inverse_RtW_times_score_space_boundary_normal",
         spatial_metric = "tetrahedral_P1_FEM_mass_correlation_with_H3",
         paraview_bundle = "aggregate/h_stability/paraview/maximum_margin_comparison.vtu_and_scene_script",
