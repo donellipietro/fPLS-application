@@ -331,6 +331,33 @@ aggregate_cv_results <- function(evaluations, aggregate_dir, image_dir, cfg) {
       row.names = FALSE
     )
   }
+  if (all(3:6 %in% as.integer(names(consensus$maps)))) {
+    paraview_dir <- file.path(consensus_dir, "paraview")
+    dir.create(paraview_dir, recursive = TRUE, showWarnings = FALSE)
+    fields <- setNames(
+      lapply(3:6, function(h) drop(consensus$maps[[as.character(h)]])),
+      paste0("slider_consensus_CTRL_unit_H", 3:6)
+    )
+    write_tetrahedral_vtu(
+      file.path(paraview_dir, "cv_slider_consensus.vtu"), mesh$nodes, mesh$elements, fields
+    )
+    file.copy(
+      "tests/brain/paraview/cv_slider_consensus.py",
+      file.path(paraview_dir, "cv_slider_consensus.py"),
+      overwrite = TRUE
+    )
+    writeLines(c(
+      "Repeated-CV SVM slider consensus maps",
+      "",
+      "Run cv_slider_consensus.py from ParaView's Python Shell, or launch:",
+      paste0("paraview --script=", file.path(paraview_dir, "cv_slider_consensus.py")),
+      "",
+      "The scene compares H = 3, 4, 5, 6 with a shared symmetric",
+      "Cool to Warm (Extended) scale. Each field is a CTRL-positive,",
+      "unit-FEM-mass-norm mean across all outer-fit slider maps.",
+      "It is a resampling consensus, not the loading of a single fitted model."
+    ), file.path(paraview_dir, "README.txt"))
+  }
 
   dir.create(image_dir, recursive = TRUE, showWarnings = FALSE)
   plotted_metrics <- c("balanced_accuracy", "roc_auc_schz", "average_precision_schz", "mcc")
