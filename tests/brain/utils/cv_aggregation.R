@@ -146,6 +146,131 @@ cv_loading_stability <- function(evaluations, points, elements) {
   list(pairwise = pairwise, by_repeat = by_repeat, summary = summary)
 }
 
+slider_components <- function(evaluations) {
+  Reduce(intersect, lapply(evaluations, function(value) {
+    as.integer(names(value$loading_maps[["SVM slider loading"]]))
+  }))
+}
+
+slider_map <- function(evaluation, h) {
+  matrix(evaluation$loading_maps[["SVM slider loading"]][[as.character(h)]], ncol = 1L)
+}
+
+summarize_slider_comparisons <- function(comparisons, group_column = "retained_components") {
+  if (is.null(comparisons) || nrow(comparisons) == 0L) return(data.frame())
+  groups <- split(comparisons, comparisons[[group_column]])
+  do.call(rbind, lapply(groups, function(value) {
+    data.frame(
+      retained_components = value$retained_components[1],
+      mean_mass_correlation = mean(value$mass_correlation),
+      sd_mass_correlation = sd(value$mass_correlation),
+      minimum_mass_correlation = min(value$mass_correlation),
+      mean_unit_mass_distance = mean(value$unit_mass_distance),
+      comparisons = nrow(value)
+    )
+  }))
+}
+
+cv_slider_cross_h_stability <- function(evaluations, points, elements, reference_h = 3L) {
+  components <- slider_components(evaluations)
+  targets <- components[components > reference_h]
+  if (!(reference_h %in% components) || length(targets) == 0L) {
+    return(list(comparisons = data.frame(), summary = data.frame()))
+  }
+  elements <- matrix(as.integer(elements), ncol = 4L)
+  volumes <- tetrahedral_volumes(points, elements)
+  comparisons <- do.call(rbind, lapply(seq_along(evaluations), function(index) {
+    evaluation <- evaluations[[index]]
+    reference <- slider_map(evaluation, reference_h)
+    do.call(rbind, lapply(targets, function(h) {
+      comparison <- mass_stability(reference, slider_map(evaluation, h), elements, volumes, sign_align = FALSE)
+      comparison$unit_mass_distance <- sqrt(pmax(0, 2 - 2 * comparison$mass_correlation))
+      cbind(
+        repeat_index = evaluation$cross_validation$repeat_index,
+        fold_index = evaluation$cross_validation$fold_index,
+        reference_components = reference_h,
+        retained_components = h,
+        comparison
+      )
+    }))
+  }))
+  list(comparisons = comparisons, summary = summarize_slider_comparisons(comparisons))
+}
+
+load_complete_data_slider_maps <- function(cfg, components) {
+  reference_dir <- file.path(
+    cfg$PATH_RESULTS, "brain", "aggregate", "h_stability", "maximum_margin_maps"
+  )
+  paths <- setNames(
+    file.path(reference_dir, paste0("reconstruction_loading_h", components, ".csv")),
+    as.character(components)
+  )
+  available <- paths[file.exists(paths)]
+  maps <- lapply(available, function(path) {
+    matrix(as.numeric(read.csv(path, check.names = FALSE)[[1]]), ncol = 1L)
+  })
+  list(
+    maps = maps,
+    reference_dir = reference_dir,
+    missing_components = as.integer(names(paths)[!file.exists(paths)])
+  )
+}
+
+cv_slider_vs_complete_data <- function(evaluations, points, elements, complete_maps) {
+  components <- intersect(slider_components(evaluations), as.integer(names(complete_maps)))
+  if (length(components) == 0L) return(list(comparisons = data.frame(), summary = data.frame()))
+  elements <- matrix(as.integer(elements), ncol = 4L)
+  volumes <- tetrahedral_volumes(points, elements)
+  comparisons <- do.call(rbind, lapply(seq_along(evaluations), function(index) {
+    evaluation <- evaluations[[index]]
+    do.call(rbind, lapply(components, function(h) {
+      comparison <- mass_stability(
+        complete_maps[[as.character(h)]], slider_map(evaluation, h), elements, volumes, sign_align = FALSE
+      )
+      comparison$unit_mass_distance <- sqrt(pmax(0, 2 - 2 * comparison$mass_correlation))
+      cbind(
+        repeat_index = evaluation$cross_validation$repeat_index,
+        fold_index = evaluation$cross_validation$fold_index,
+        retained_components = h,
+        comparison
+      )
+    }))
+  }))
+  list(comparisons = comparisons, summary = summarize_slider_comparisons(comparisons))
+}
+
+cv_slider_consensus_maps <- function(evaluations, points, elements) {
+  components <- slider_components(evaluations)
+  elements <- matrix(as.integer(elements), ncol = 4L)
+  volumes <- tetrahedral_volumes(points, elements)
+  maps <- setNames(lapply(components, function(h) {
+    unit_maps <- lapply(evaluations, function(evaluation) {
+      value <- slider_map(evaluation, h)
+      value / sqrt(drop(mass_crossprod(value, value, elements, volumes)))
+    })
+    consensus <- Reduce(`+`, unit_maps) / length(unit_maps)
+    consensus / sqrt(drop(mass_crossprod(consensus, consensus, elements, volumes)))
+  }), as.character(components))
+  list(maps = maps, fits = length(evaluations))
+}
+
+plot_slider_correlation <- function(summary, filename, x_label, y_label) {
+  if (nrow(summary) == 0L) return(invisible(NULL))
+  plot <- ggplot(summary, aes(retained_components, mean_mass_correlation)) +
+    geom_errorbar(
+      aes(ymin = mean_mass_correlation - sd_mass_correlation, ymax = mean_mass_correlation + sd_mass_correlation),
+      width = 0.12,
+      na.rm = TRUE
+    ) +
+    geom_point(size = 2, colour = "#007C91") +
+    scale_x_continuous(breaks = sort(unique(summary$retained_components))) +
+    coord_cartesian(ylim = c(-1, 1)) +
+    labs(x = x_label, y = y_label) +
+    theme_bw()
+  if (nrow(summary) > 1L) plot <- plot + geom_line(linewidth = 0.7, colour = "#007C91")
+  ggsave(filename, plot, width = 7, height = 4.5, dpi = 180)
+}
+
 aggregate_cv_results <- function(evaluations, aggregate_dir, image_dir, cfg) {
   fold_metrics <- bind_cv_field(evaluations, "fold_metrics")
   predictions <- bind_cv_field(evaluations, "predictions")
@@ -172,6 +297,12 @@ aggregate_cv_results <- function(evaluations, aggregate_dir, image_dir, cfg) {
   performance <- summarize_repeated_metrics(oof_metrics)
   mesh <- load_brain_mesh(cfg$PATH_APPLICATION_DATA)
   stability <- cv_loading_stability(evaluations, mesh$nodes, mesh$elements)
+  cross_h <- cv_slider_cross_h_stability(evaluations, mesh$nodes, mesh$elements)
+  complete_data <- load_complete_data_slider_maps(cfg, slider_components(evaluations))
+  against_complete <- cv_slider_vs_complete_data(
+    evaluations, mesh$nodes, mesh$elements, complete_data$maps
+  )
+  consensus <- cv_slider_consensus_maps(evaluations, mesh$nodes, mesh$elements)
 
   write.csv(fold_metrics, file.path(aggregate_dir, "cv_fold_metrics.csv"), row.names = FALSE)
   write.csv(predictions, file.path(aggregate_dir, "cv_predictions.csv"), row.names = FALSE)
@@ -183,6 +314,23 @@ aggregate_cv_results <- function(evaluations, aggregate_dir, image_dir, cfg) {
   write.csv(stability$pairwise, file.path(aggregate_dir, "cv_loading_pairwise_stability.csv"), row.names = FALSE)
   write.csv(stability$by_repeat, file.path(aggregate_dir, "cv_loading_stability_by_repeat.csv"), row.names = FALSE)
   write.csv(stability$summary, file.path(aggregate_dir, "cv_loading_stability_summary.csv"), row.names = FALSE)
+  if (nrow(cross_h$comparisons) > 0L) {
+    write.csv(cross_h$comparisons, file.path(aggregate_dir, "cv_slider_cross_H_stability.csv"), row.names = FALSE)
+    write.csv(cross_h$summary, file.path(aggregate_dir, "cv_slider_cross_H_stability_summary.csv"), row.names = FALSE)
+  }
+  if (nrow(against_complete$comparisons) > 0L) {
+    write.csv(against_complete$comparisons, file.path(aggregate_dir, "cv_slider_vs_complete_data.csv"), row.names = FALSE)
+    write.csv(against_complete$summary, file.path(aggregate_dir, "cv_slider_vs_complete_data_summary.csv"), row.names = FALSE)
+  }
+  consensus_dir <- file.path(aggregate_dir, "cv_slider_consensus_maps")
+  dir.create(consensus_dir, recursive = TRUE, showWarnings = FALSE)
+  for (h in names(consensus$maps)) {
+    write.csv(
+      data.frame(coefficient = drop(consensus$maps[[h]])),
+      file.path(consensus_dir, paste0("slider_consensus_h", h, ".csv")),
+      row.names = FALSE
+    )
+  }
 
   dir.create(image_dir, recursive = TRUE, showWarnings = FALSE)
   plotted_metrics <- c("balanced_accuracy", "roc_auc_schz", "average_precision_schz", "mcc")
@@ -219,6 +367,18 @@ aggregate_cv_results <- function(evaluations, aggregate_dir, image_dir, cfg) {
     stability_plot <- stability_plot + geom_line(linewidth = 0.7)
   }
   ggsave(plot_file(image_dir, "cv_loading_reproducibility"), stability_plot, width = 8, height = 4.8, dpi = 180)
+  plot_slider_correlation(
+    cross_h$summary,
+    plot_file(image_dir, "cv_slider_cross_H_stability"),
+    "Retained components H",
+    "FEM mass correlation with the H=3 slider map"
+  )
+  plot_slider_correlation(
+    against_complete$summary,
+    plot_file(image_dir, "cv_slider_vs_complete_data"),
+    "Retained components H",
+    "FEM mass correlation with the complete-data slider map"
+  )
 
   list(
     repeats = length(unique(predictions$repeat_index)),
@@ -228,6 +388,10 @@ aggregate_cv_results <- function(evaluations, aggregate_dir, image_dir, cfg) {
     evaluated_components = sort(unique(predictions$retained_components)),
     max_projection_error = max(resources$projection_max_abs_error),
     performance = performance,
-    stability = stability
+    stability = stability,
+    slider_cross_h = cross_h,
+    slider_against_complete_data = against_complete,
+    complete_data_reference = complete_data,
+    consensus_slider_maps = consensus
   )
 }

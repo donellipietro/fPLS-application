@@ -152,6 +152,24 @@ if (requested == "out_of_sample") {
         metric = "tetrahedral_P1_FEM_mass_correlation",
         orientation = "fixed_CTRL_positive_without_post_hoc_sign_alignment"
       ),
+      slider_map_assessment = list(
+        within_fit_cross_H = list(
+          reference = "the_same_outer_training_fit_H3_SVM_slider_loading",
+          comparisons = "H4_to_H6_when_available",
+          metric = "tetrahedral_P1_FEM_mass_correlation_without_sign_alignment"
+        ),
+        complete_data_comparison = list(
+          reference = "matching_H_complete_data_SVM_slider_loading",
+          available_components = as.integer(names(cv$complete_data_reference$maps)),
+          missing_components = cv$complete_data_reference$missing_components,
+          caveat = "descriptive_overlap_check_only_complete_fit_contains_each_outer_training_set"
+        ),
+        consensus_maps = list(
+          directory = "cv_slider_consensus_maps",
+          definition = "mean_of_CTRL_oriented_unit_FEM_norm_outer_fit_slider_maps_then_unit_FEM_normalized",
+          caveat = "resampling_summary_not_the_slider_loading_of_a_single_fitted_model"
+        )
+      ),
       uncertainty = "q025_and_q975_are_empirical_repeat_variability_not_formal_confidence_intervals",
       maximum_projection_abs_error = cv$max_projection_error
     ),
