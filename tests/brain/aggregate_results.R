@@ -11,6 +11,7 @@ graphics.off()
 suppressMessages(library(jsonlite))
 suppressMessages(library(glue))
 suppressMessages(library(ggplot2))
+if (capabilities("cairo")) options(bitmapType = "cairo")
 
 source("src/utils/directories.R")
 source("src/utils/options.R")
