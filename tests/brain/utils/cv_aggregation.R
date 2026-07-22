@@ -198,7 +198,7 @@ aggregate_cv_results <- function(evaluations, aggregate_dir, image_dir, cfg) {
   if (length(unique(plot_data$retained_components)) > 1L) {
     performance_plot <- performance_plot + geom_line(linewidth = 0.7)
   }
-  ggsave(file.path(image_dir, "cv_out_of_sample_performance.png"), performance_plot, width = 9, height = 6, dpi = 180)
+  ggsave(plot_file(image_dir, "cv_out_of_sample_performance"), performance_plot, width = 9, height = 6, dpi = 180)
 
   stability_plot <- ggplot(
     stability$summary,
@@ -218,7 +218,7 @@ aggregate_cv_results <- function(evaluations, aggregate_dir, image_dir, cfg) {
   if (length(unique(stability$summary$retained_components)) > 1L) {
     stability_plot <- stability_plot + geom_line(linewidth = 0.7)
   }
-  ggsave(file.path(image_dir, "cv_loading_reproducibility.png"), stability_plot, width = 8, height = 4.8, dpi = 180)
+  ggsave(plot_file(image_dir, "cv_loading_reproducibility"), stability_plot, width = 8, height = 4.8, dpi = 180)
 
   list(
     repeats = length(unique(predictions$repeat_index)),

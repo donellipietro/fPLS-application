@@ -12,6 +12,9 @@ suppressMessages(library(jsonlite))
 suppressMessages(library(glue))
 suppressMessages(library(ggplot2))
 if (capabilities("cairo")) options(bitmapType = "cairo")
+plot_file <- function(directory, stem) {
+  file.path(directory, paste0(stem, if (capabilities("cairo")) ".png" else ".pdf"))
+}
 
 source("src/utils/directories.R")
 source("src/utils/options.R")
@@ -186,7 +189,7 @@ if (!is.null(separation)) {
     theme_bw() +
     theme(legend.position = "top")
   ggsave(
-    file.path(image_dir, "separation_by_H.png"),
+    plot_file(image_dir, "separation_by_H"),
     separation_plot,
     width = 7,
     height = 4.5,
@@ -233,7 +236,7 @@ if (requested == "h_stability" && "h_stability_H6" %in% names(all_evaluations)) 
     theme_bw() +
     theme(legend.position = "top")
   ggsave(
-    file.path(image_dir, "decision_boundary_and_beta_stability_by_H.png"),
+    plot_file(image_dir, "decision_boundary_and_beta_stability_by_H"),
     stability_plot,
     width = 7,
     height = 4.5,
@@ -351,7 +354,7 @@ if (requested == "h_stability" && "h_stability_H6" %in% names(all_evaluations)) 
     labs(x = "Retained components H", y = "Maximum geometric margin (standardized scores)") +
     theme_bw()
   ggsave(
-    file.path(image_dir, "maximum_margin_by_H.png"),
+    plot_file(image_dir, "maximum_margin_by_H"),
     margin_plot,
     width = 7,
     height = 4.5,
@@ -383,7 +386,7 @@ if (requested == "h_stability" && "h_stability_H6" %in% names(all_evaluations)) 
     theme_bw() +
     theme(legend.position = "top")
   ggsave(
-    file.path(image_dir, "maximum_margin_correlations_by_H.png"),
+    plot_file(image_dir, "maximum_margin_correlations_by_H"),
     correlation_plot,
     width = 7,
     height = 4.5,
