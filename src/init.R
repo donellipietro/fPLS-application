@@ -21,8 +21,8 @@ args <- commandArgs(trailingOnly = TRUE)
 ## Parse the arguments, if any
 if (length(args) == 0) {
   ## Defaults
-  test_suite     <- "smoothing-example"
-  name_main_test <- "all"
+  test_suite     <- "brain"
+  name_main_test <- "smoke_overall_mean"
 } else {
   ## Set the requested configuration
   test_suite     <- args[1]

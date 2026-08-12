@@ -30,7 +30,7 @@ check_matrix_shape <- function(value, rows, cols, label) {
   }
 }
 
-run_with_heartbeat <- function(command, log_file, heartbeat_seconds = 60L) {
+run_with_heartbeat <- function(command, log_file, model_name, heartbeat_seconds = 60L) {
   heartbeat_seconds <- as.integer(heartbeat_seconds)
   if (is.na(heartbeat_seconds) || heartbeat_seconds < 1L) stop("heartbeat_seconds must be positive")
   log_file <- shQuote(log_file)
@@ -38,7 +38,7 @@ run_with_heartbeat <- function(command, log_file, heartbeat_seconds = 60L) {
     "({command} >> {log_file} 2>&1 & native_pid=$!; started=$(date +%s); ",
     "(while kill -0 \"$native_pid\" 2>/dev/null; do sleep {heartbeat_seconds}; ",
     "if kill -0 \"$native_pid\" 2>/dev/null; then now=$(date +%s); ",
-    "printf '%s - fPLS fit still running (%ss elapsed)\\n' \"$(date '+%Y-%m-%d %H:%M:%S')\" ",
+    "printf '%s - {model_name} fit still running (%ss elapsed)\\n' \"$(date '+%Y-%m-%d %H:%M:%S')\" ",
     "\"$((now - started))\" >> {log_file}; fi; done) & heartbeat_pid=$!; ",
     "wait \"$native_pid\"; native_status=$?; kill \"$heartbeat_pid\" 2>/dev/null || true; ",
     "wait \"$heartbeat_pid\" 2>/dev/null || true; exit \"$native_status\")"
@@ -46,13 +46,19 @@ run_with_heartbeat <- function(command, log_file, heartbeat_seconds = 60L) {
   system_with_memory(heartbeat_command, ignore.stdout = IGNORE_CPP_OUTPUT)
 }
 
-fit_native_model <- function(data, path_list, test_options) {
+fit_native_model <- function(model_name, data, path_list, test_options) {
+  if (!model_name %in% c("R1_fPLS", "fPCR")) {
+    stop(glue::glue("The model {model_name} does not exist"))
+  }
   cfg <- load_config()
-  raw_dir <- file.path(path_list$batch, "raw", "R1_fPLS")
+  raw_dir <- file.path(path_list$batch, "raw", model_name)
   input_files <- write_brain_native_inputs(data, raw_dir)
   params_file <- file.path(raw_dir, "params.json")
   telemetry_file <- file.path(raw_dir, "telemetry.json")
   log_file <- file.path(path_list$logs, glue::glue("log_{test_options$name_test}.txt"))
+  binary <- file.path(path_list$cpp_script, "fit_model")
+  if (!file.exists(binary)) stop("native fit binary is missing")
+  binary_md5 <- unname(as.character(tools::md5sum(binary)))
 
   outer_commit <- git_commit(cfg$PATH_FDAPDE_CPP)
   core_commit <- git_commit(file.path(cfg$PATH_FDAPDE_CPP, "fdaPDE", "core"))
@@ -61,22 +67,32 @@ fit_native_model <- function(data, path_list, test_options) {
     list(
       suite = test_suite,
       scenario = test_options$name_test,
-      model = "R1_fPLS",
+      model = model_name,
       runtime_profile = Sys.getenv("TESTBENCH_PROFILE", unset = "unknown"),
       outer_branch = cfg$FDAPDE_CPP_BRANCH,
       outer_commit = outer_commit,
       core_commit = core_commit,
+      native_binary_md5 = binary_md5,
       data_path = test_options$data$source_path,
-      centering = test_options$data$centering
+      centering = data$centering,
+      input_md5 = as.list(data$input_md5),
+      preprocessing_md5 = data$preprocessing_md5,
+      fit_configuration = test_options$regularization[c(
+        "calibration", "fixed_direction_lambda", "fixed_loading_lambda",
+        "lambda_grid", "gcv_seed", "gcv_probes", "max_iter", "tolerance"
+      )]
     ),
     if (isTRUE(test_options$cross_validation$enabled)) list(
       cross_validation_split = test_options$cross_validation[c(
-        "n_folds", "repeat_index", "fold_index", "seed"
-      )]
+        "n_folds", "n_repeats", "repeat_index", "fold_index", "seed",
+        "inner_folds", "evaluation_components", "svm_cost_grid",
+        "class_weighting", "primary_components"
+      )],
+      svm_tuning_scope = "classifier_only_inner_CV_conditional_on_outer_training_fitted_reducer"
     ) else list()
   )
   params <- list(
-    model = "R1_fPLS",
+    model = model_name,
     n_comp = test_options$model$n_comp,
     center = FALSE,
     calibration = test_options$regularization$calibration,
@@ -99,19 +115,18 @@ fit_native_model <- function(data, path_list, test_options) {
   )
   write_json(params, params_file, auto_unbox = TRUE, digits = NA, pretty = TRUE)
 
-  binary <- file.path(path_list$cpp_script, "fit_model")
   runner <- file.path(path_list$repo, "cpp", "run.sh")
   command <- glue::glue("{shQuote(runner)} --quiet -- {shQuote(binary)} {shQuote(params_file)}")
   unlink(telemetry_file)
-  cat("- Native fPLS process started; heartbeat every 60 seconds\n")
-  run_stats <- run_with_heartbeat(command, log_file)
-  cat("- Native fPLS process completed\n")
+  cat(glue::glue("- Native {model_name} process started; heartbeat every 60 seconds"), "\n")
+  run_stats <- run_with_heartbeat(command, log_file, model_name)
+  cat(glue::glue("- Native {model_name} process completed"), "\n")
   if (!identical(run_stats$status, 0L) && file.exists(telemetry_file)) {
     warning("resource measurement returned nonzero after the native process wrote completion telemetry")
     run_stats$status <- 0L
   }
   if (!identical(run_stats$status, 0L)) {
-    return(list(MODE = "R1_fPLS", status = run_stats$status, raw_output_dir = raw_dir))
+    return(list(MODE = model_name, status = run_stats$status, raw_output_dir = raw_dir))
   }
 
   telemetry <- fromJSON(telemetry_file, simplifyVector = TRUE)
@@ -133,6 +148,12 @@ fit_native_model <- function(data, path_list, test_options) {
     Y_loadings = read_cpp_matrix(file.path(raw_dir, "y_loadings.csv")),
     direction_lambdas = read_cpp_matrix(file.path(raw_dir, "direction_lambdas.csv")),
     loading_lambdas = read_cpp_matrix(file.path(raw_dir, "loading_lambdas.csv")),
+    fpca_lambdas = if (identical(model_name, "fPCR")) {
+      read_cpp_matrix(file.path(raw_dir, "fpca_lambdas.csv"))
+    } else matrix(NaN, n_comp, 1L),
+    score_projection_scales = if (identical(model_name, "fPCR")) {
+      read_cpp_matrix(file.path(raw_dir, "score_projection_scales.csv"))
+    } else matrix(1, n_comp, 1L),
     iteration_counts = component_diagnostics$iterations,
     monotone = component_diagnostics$monotone,
     objective = component_diagnostics$objective,
@@ -148,6 +169,8 @@ fit_native_model <- function(data, path_list, test_options) {
   check_matrix_shape(raw$Y_latent_scores, n_units, n_comp, "Y scores")
   check_matrix_shape(raw$X_loadings, n_nodes, n_comp, "X loadings")
   check_matrix_shape(raw$Y_loadings, n_responses, n_comp, "Y loadings")
+  check_matrix_shape(raw$fpca_lambdas, n_comp, 1L, "fPCA lambdas")
+  check_matrix_shape(raw$score_projection_scales, n_comp, 1L, "score projection scales")
 
   raw$Y_hat <- lapply(seq_len(n_comp), function(h) {
     read_cpp_matrix(file.path(raw_dir, glue::glue("y_hat_h{h}.csv")))
@@ -168,7 +191,7 @@ fit_native_model <- function(data, path_list, test_options) {
   }
 
   list(
-    MODE = "R1_fPLS",
+    MODE = model_name,
     status = 0L,
     results = c(
       raw,
@@ -182,15 +205,14 @@ fit_native_model <- function(data, path_list, test_options) {
         fit_seconds = telemetry$fit_seconds,
         output_seconds = telemetry$output_seconds,
         n_basis = telemetry$n_basis,
-        calibration = telemetry$calibration
+        calibration = telemetry$calibration,
+        fpca_implementation = telemetry$fpca_implementation,
+        fpca_gcv_edf = telemetry$fpca_gcv_edf
       )
     )
   )
 }
 
 fit_model <- function(model_name, domain, data, path_list, test_options) {
-  if (!identical(model_name, "R1_fPLS")) {
-    stop(glue::glue("The model {model_name} does not exist"))
-  }
-  fit_native_model(data, path_list, test_options)
+  fit_native_model(model_name, data, path_list, test_options)
 }

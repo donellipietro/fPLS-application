@@ -382,7 +382,7 @@ h_stability_tail: ensure_env
 	if [ -f "$$log_file" ]; then tail -n "$(LINES)" -f "$$log_file"; \
 	else echo "No H=$(H_STABILITY_LOG_H) log yet: $$log_file"; fi
 
-## Inspect results of a specific test interactively
+## Inspect results interactively when the selected suite provides inspect_results.R
 # Usage: make inspect_results TEST_SUITE=<suite> TEST_NAME=<test_name>
 # Lists available result files in tmp/queue/<suite>/<test>, lets you select one,
 # and runs the corresponding R scripts to visualize or analyze it.
@@ -397,6 +397,11 @@ inspect_results: ensure_env
 		exit 0; \
 	else \
 		set -e; \
+		inspector="tests/$(TEST_SUITE)/inspect_results.R"; \
+		if [ ! -f "$$inspector" ]; then \
+			echo "No interactive inspector is bundled for suite '$(TEST_SUITE)'."; \
+			exit 2; \
+		fi; \
 		set -a; source .env; set +a; \
 		queue_directory="$${PATH_QUEUE}/$(TEST_SUITE)/$(TEST_NAME)"; \
 		SMOKE_TEST="$(SMOKE_TEST)" $(RSCRIPT) src/init.R "$(TEST_SUITE)" "$(TEST_NAME)"; \
@@ -415,7 +420,7 @@ inspect_results: ensure_env
 		if [ $$choice -ge 1 ] && [ $$choice -le $$count ]; then \
 			selected=$${files[$$((choice-1))]}; \
 			echo "Running RScript with selected file: $$selected"; \
-			$(RSCRIPT) "tests/$(TEST_SUITE)/inspect_results.R" "$(TEST_NAME)" "$$selected"; \
+			$(RSCRIPT) "$$inspector" "$(TEST_NAME)" "$$selected"; \
 		else \
 			echo "Invalid choice!"; \
 			exit 1; \

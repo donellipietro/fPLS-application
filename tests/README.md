@@ -4,7 +4,7 @@ Each test suite lives in `tests/<suite_name>/` and is run through the root
 Makefile:
 
 ```bash
-make run_test TEST_SUITE=smoothing-example TEST_NAME=all
+make run_test TEST_SUITE=brain TEST_NAME=out_of_sample
 ```
 
 Before execution, `run_test` invokes the standard `compile` target with the
@@ -38,13 +38,10 @@ Only `config.R`, `main.R`, `aggregate_results.R`, and
 are either sourced by the suite's own `main.R` or used by inspection/reporting
 scripts.
 
-## Bundled Suites
+## Bundled Suite
 
-- `smoothing-example`: paired 1D SRPDE FEM/spline experiments following the
-  template batch/wrapper/evaluation flow, with peak RAM recorded in MiB; see
-  [`smoothing-example/README.md`](smoothing-example/README.md).
-- `template_base`: copy this when starting a new suite, then fill in the
-  placeholders.
+- `brain`: reviewer-facing neuroimaging application with full-data R1-fPLS
+  diagnostics and leakage-safe R1-fPLS versus fPCR repeated CV.
 
 ## Execution Flow
 
@@ -66,5 +63,5 @@ Slurm jobs. Suite `config.R` files should parse it and `generate_options.R`
 should use it to reduce repetitions and/or option grids.
 
 ```bash
-SMOKE_TEST=1 make run_test TEST_SUITE=smoothing-example TEST_NAME=all
+SMOKE_TEST=1 make run_test TEST_SUITE=brain TEST_NAME=out_of_sample
 ```

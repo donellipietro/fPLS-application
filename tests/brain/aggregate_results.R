@@ -37,6 +37,11 @@ dir.create(aggregate_dir, recursive = TRUE, showWarnings = FALSE)
 
 path_list <- create_paths(test_suite)
 all_evaluations <- list()
+expected_evaluations <- character()
+
+model_reducer_label <- function(model_name) {
+  if (identical(model_name, "R1_fPLS")) "R1-fPLS" else if (identical(model_name, "fPCR")) "fPCR" else model_name
+}
 
 for (family in families) {
   queue_dir <- file.path(path_list$queue, family)
@@ -44,6 +49,9 @@ for (family in families) {
   option_files <- sort(list.files(queue_dir, pattern = "[.]json$", full.names = TRUE))
   for (option_file in option_files) {
     options <- fromJSON(option_file, simplifyVector = TRUE)
+    model_names <- as.character(options$model_names)
+    evaluation_keys <- paste(options$name_test, model_names, sep = "::")
+    expected_evaluations <- c(expected_evaluations, evaluation_keys)
     result_file <- file.path(
       path_list$results,
       family,
@@ -53,7 +61,14 @@ for (family in families) {
     )
     if (file.exists(result_file)) {
       load(result_file)
-      all_evaluations[[options$name_test]] <- results_evaluation$R1_fPLS
+      for (model_name in intersect(model_names, names(results_evaluation))) {
+        value <- results_evaluation[[model_name]]
+        value$scenario <- options$name_test
+        if (is.null(value$dimension_reducer)) {
+          value$dimension_reducer <- model_reducer_label(model_name)
+        }
+        all_evaluations[[paste(options$name_test, model_name, sep = "::")]] <- value
+      }
     }
   }
 }
@@ -79,7 +94,8 @@ if (length(failed_names) > 0L) {
   failures <- lapply(failed_names, function(name) {
     value <- all_evaluations[[name]]
     list(
-      scenario = name,
+      scenario = value$scenario,
+      dimension_reducer = value$dimension_reducer,
       native_status = as.integer(value$status),
       validation_status = value$validation_status
     )
@@ -101,56 +117,98 @@ if (length(failed_names) > 0L) {
 }
 
 if (requested == "out_of_sample") {
-  expected_fits <- sum(vapply(families, function(family) {
-    length(list.files(file.path(path_list$queue, family), pattern = "[.]json$"))
-  }, integer(1)))
-  if (length(all_evaluations) != expected_fits) {
+  missing_evaluations <- setdiff(expected_evaluations, names(all_evaluations))
+  if (length(missing_evaluations) > 0L) {
     write_json(
       list(
-        schema_version = 1L,
+        schema_version = 2L,
         requested = requested,
         run_complete = FALSE,
         status = "missing_cross_validation_fits",
         completed_fits = length(all_evaluations),
-        expected_fits = expected_fits
+        expected_fits = length(expected_evaluations),
+        missing_evaluations = missing_evaluations
       ),
       file.path(aggregate_dir, "application_run_status.json"),
       auto_unbox = TRUE,
       pretty = TRUE
     )
-    stop(glue::glue("CV aggregation found {length(all_evaluations)} of {expected_fits} expected fits"))
+    stop(glue::glue(
+      "CV aggregation found {length(all_evaluations)} of {length(expected_evaluations)} expected reducer fits"
+    ))
+  }
+  validation_statuses <- unique(vapply(all_evaluations, function(value) {
+    status <- value$provenance$validation_status
+    if (is.null(status)) NA_character_ else as.character(status)
+  }, character(1)))
+  run_status <- if (identical(validation_statuses, "cross_validation_smoke")) {
+    "smoke_complete"
+  } else if (identical(validation_statuses, "cross_validation_production")) {
+    "production_complete"
+  } else if (identical(validation_statuses, "cross_validation_noncanonical")) {
+    "noncanonical_complete"
+  } else {
+    write_json(
+      list(
+        schema_version = 2L,
+        requested = requested,
+        run_complete = FALSE,
+        status = "mixed_or_missing_validation_provenance",
+        validation_statuses = validation_statuses
+      ),
+      file.path(aggregate_dir, "application_run_status.json"),
+      auto_unbox = TRUE,
+      pretty = TRUE
+    )
+    stop("CV evaluations have missing or mixed saved validation provenance: ", paste(validation_statuses, collapse = ", "))
   }
   image_dir <- file.path(cfg$PATH_IMAGES, test_suite, "aggregate", requested)
+  write_json(
+    list(
+      schema_version = 2L,
+      requested = requested,
+      run_complete = FALSE,
+      status = "aggregation_in_progress"
+    ),
+    file.path(aggregate_dir, "application_run_status.json"),
+    auto_unbox = TRUE,
+    pretty = TRUE
+  )
   cv <- aggregate_cv_results(all_evaluations, aggregate_dir, image_dir, cfg)
   write_json(
     list(
-      schema_version = 1L,
+      schema_version = 2L,
       requested = requested,
       run_complete = TRUE,
-      status = "complete",
+      status = run_status,
       design = list(
         method = "repeated_stratified_outer_cross_validation",
         repeats = cv$repeats,
         folds = cv$folds,
         native_fits = cv$fits,
+        native_fits_by_dimension_reducer = cv$fits_by_reducer,
+        dimension_reducers = cv$dimension_reducers,
         outer_split_unit = "subject",
-        leakage_control = "centering_response_recoding_GCV_threshold_score_scaling_and_SVM_tuning_training_only",
-        native_fit = glue::glue("one_progressive_H{cv$native_components}_fit_per_outer_fold"),
+        leakage_control = "outer_test_untouched_by_centering_response_recoding_GCV_fPCA_GCV_latent_response_OLS_threshold_score_scaling_and_SVM_tuning",
+        native_fit = glue::glue("one_progressive_H{cv$native_components}_fit_per_dimension_reducer_and_outer_fold"),
         primary_H = min(3L, cv$native_components),
         sensitivity_H = setdiff(cv$evaluated_components, min(3L, cv$native_components)),
         imbalance_handling = "stratified_folds_inverse_frequency_SVM_weights_and_class_sensitive_metrics"
       ),
       prediction = list(
-        projection = "sequential_residual_projection_matching_native_fPLS_deflation",
-        classifiers = c("PLS reconstructed response with training threshold", "class-weighted linear SVM"),
+        axes = c("dimension_reducer", "classifier"),
+        projection = "reducer_specific_sequential_residual_projection_verified_against_native_training_scores",
+        classifiers = c("training_only_OLS_latent_response_with_training_threshold", "class-weighted linear SVM"),
+        svm_tuning_scope = "classifier_only_inner_CV_conditional_on_the_outer_training_fitted_reducer_not_full_nested_pipeline_CV",
         positive_score_orientation = "CTRL",
         primary_metrics = c("SCHZ sensitivity", "SCHZ average precision", "SCHZ ROC AUC", "CTRL specificity", "balanced accuracy", "MCC")
       ),
       loading_reproducibility = list(
-        quantities = c("Paper response loading", "SVM slider loading"),
-        comparison = "pairwise_between_outer_training_fits_within_each_repeat",
+        quantities = c("Latent response loading", "SVM slider loading"),
+        comparison = "pairwise_between_outer_training_fits_within_each_repeat_and_dimension_reducer",
         metric = "tetrahedral_P1_FEM_mass_correlation",
-        orientation = "fixed_CTRL_positive_without_post_hoc_sign_alignment"
+        orientation = "fixed_CTRL_positive_without_post_hoc_sign_alignment",
+        cross_reducer_mixing = "never"
       ),
       slider_map_assessment = list(
         within_fit_cross_H = list(
@@ -159,16 +217,23 @@ if (requested == "out_of_sample") {
           metric = "tetrahedral_P1_FEM_mass_correlation_without_sign_alignment"
         ),
         complete_data_comparison = list(
-          reference = "matching_H_complete_data_SVM_slider_loading",
+          dimension_reducer = cv$complete_data_reference$dimension_reducer,
+          reference = "matching_H_complete_data_R1_fPLS_SVM_slider_loading",
           available_components = as.integer(names(cv$complete_data_reference$maps)),
           missing_components = cv$complete_data_reference$missing_components,
           caveat = "descriptive_overlap_check_only_complete_fit_contains_each_outer_training_set"
         ),
         consensus_maps = list(
           directory = "cv_slider_consensus_maps",
-          definition = "mean_of_CTRL_oriented_unit_FEM_norm_outer_fit_slider_maps_then_unit_FEM_normalized",
+          subdirectories = vapply(cv$dimension_reducers, reducer_slug, character(1)),
+          definition = "within_dimension_reducer_mean_of_CTRL_oriented_unit_FEM_norm_outer_fit_slider_maps_then_unit_FEM_normalized",
           caveat = "resampling_summary_not_the_slider_loading_of_a_single_fitted_model"
         )
+      ),
+      regularization_outputs = list(
+        fpls = "cv_selected_fpls_lambdas.csv",
+        fpca = "cv_selected_fpca_lambdas.csv",
+        fpca_gcv = "application_local_power_iteration_with_explicit_Hutchinson_probe_count_and_seed"
       ),
       uncertainty = "q025_and_q975_are_empirical_repeat_variability_not_formal_confidence_intervals",
       maximum_projection_abs_error = cv$max_projection_error
@@ -184,7 +249,12 @@ if (requested == "out_of_sample") {
 separation <- do.call(rbind, lapply(names(all_evaluations), function(name) {
   value <- all_evaluations[[name]]
   if (isTRUE(value$failed) || is.null(value$separation)) return(NULL)
-  cbind(scenario = name, requested_components = value$n_comp, value$separation)
+  cbind(
+    scenario = value$scenario,
+    dimension_reducer = value$dimension_reducer,
+    requested_components = value$n_comp,
+    value$separation
+  )
 }))
 
 if (!is.null(separation)) {
@@ -219,7 +289,10 @@ loading_stability <- NULL
 beta_stability_summary <- NULL
 maximum_margin_summary <- NULL
 classifier_formula_max_abs_error <- NULL
-if (requested == "h_stability" && "h_stability_H6" %in% names(all_evaluations)) {
+has_h6_fpls <- any(vapply(all_evaluations, function(value) {
+  identical(value$scenario, "h_stability_H6") && identical(value$dimension_reducer, "R1-fPLS")
+}, logical(1)))
+if (requested == "h_stability" && has_h6_fpls) {
   raw_dir <- file.path(path_list$results, "h_stability", "h_stability_H6", "batch_1", "raw", "R1_fPLS")
   batch_dir <- dirname(dirname(raw_dir))
   image_dir <- file.path(cfg$PATH_IMAGES, test_suite, "aggregate", requested)

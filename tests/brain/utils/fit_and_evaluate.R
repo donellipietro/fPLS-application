@@ -3,30 +3,65 @@
 # - Desc: Fits and evaluates the native application model for one option.
 # = ========================================================================== =
 
-native_model_matches_options <- function(model, model_name, test_options) {
-  if (!identical(model_name, "R1_fPLS") || is.null(model$results$telemetry)) return(FALSE)
+native_model_matches_options <- function(model, model_name, test_options, data, path_list) {
+  if (!identical(model$MODE, model_name) || is.null(model$results$telemetry)) return(FALSE)
   telemetry <- model$results$telemetry
   same <- function(left, right) isTRUE(all.equal(left, right))
-  telemetry_flag <- function(name) {
+  fit_configuration <- telemetry$provenance$fit_configuration
+  configured <- function(name) {
     value <- telemetry[[name]]
-    if (is.null(value)) TRUE else isTRUE(value)
+    if (is.null(value)) fit_configuration[[name]] else value
+  }
+  same_md5 <- function(left, right) {
+    left <- unlist(left, use.names = TRUE)
+    right <- unlist(right, use.names = TRUE)
+    same(left[sort(names(left))], right[sort(names(right))])
   }
   split_matches <- if (isTRUE(test_options$cross_validation$enabled)) {
     observed <- telemetry$provenance$cross_validation_split
-    expected <- test_options$cross_validation[c("n_folds", "repeat_index", "fold_index", "seed")]
+    expected <- test_options$cross_validation[c(
+      "n_folds", "n_repeats", "repeat_index", "fold_index", "seed",
+      "inner_folds", "evaluation_components", "svm_cost_grid",
+      "class_weighting", "primary_components"
+    )]
     same(
       observed[sort(names(observed))],
       expected[sort(names(expected))]
     )
   } else TRUE
-  same(telemetry$schema_version, 1L) &&
-    identical(telemetry$model, model_name) &&
+  cfg <- load_config()
+  binary <- file.path(path_list$cpp_script, "fit_model")
+  binary_md5 <- if (file.exists(binary)) unname(as.character(tools::md5sum(binary))) else NA_character_
+  fixed_lambda_matches <- if (identical(model_name, "fPCR")) {
+    same(configured("fixed_fpca_lambda"), test_options$regularization$fixed_loading_lambda)
+  } else {
+    same(configured("fixed_direction_lambda"), test_options$regularization$fixed_direction_lambda) &&
+      same(configured("fixed_loading_lambda"), test_options$regularization$fixed_loading_lambda)
+  }
+  fpca_implementation_matches <- if (identical(model_name, "fPCR")) {
+    identical(telemetry$fpca_implementation, "application_local_with_explicit_edf_control") &&
+      identical(telemetry$fpca_gcv_edf$probe_count_source, "gcv_probes") &&
+      identical(telemetry$fpca_gcv_edf$seed_source, "gcv_seed") &&
+      identical(telemetry$fpca_gcv_edf$seed_mode, "explicit_deterministic")
+  } else TRUE
+  identical(telemetry$model, model_name) &&
     same(telemetry$n_components, test_options$model$n_comp) &&
-    same(telemetry$max_iter, test_options$regularization$max_iter) &&
-    same(telemetry$tolerance, test_options$regularization$tolerance) &&
-    same(as.numeric(telemetry$lambda_grid), test_options$regularization$lambda_grid) &&
-    same(telemetry_flag("write_reconstructions"), isTRUE(test_options$output$write_reconstructions)) &&
-    same(telemetry_flag("write_beta"), isTRUE(test_options$output$write_beta)) &&
+    same(configured("calibration"), test_options$regularization$calibration) &&
+    fpca_implementation_matches &&
+    fixed_lambda_matches &&
+    same(as.numeric(configured("lambda_grid")), test_options$regularization$lambda_grid) &&
+    same(configured("gcv_seed"), test_options$regularization$gcv_seed) &&
+    same(configured("gcv_probes"), test_options$regularization$gcv_probes) &&
+    same(configured("max_iter"), test_options$regularization$max_iter) &&
+    same(configured("tolerance"), test_options$regularization$tolerance) &&
+    same(telemetry$write_reconstructions, isTRUE(test_options$output$write_reconstructions)) &&
+    same(telemetry$write_beta, isTRUE(test_options$output$write_beta)) &&
+    identical(telemetry$provenance$centering, data$centering) &&
+    identical(telemetry$provenance$outer_commit, git_commit(cfg$PATH_FDAPDE_CPP)) &&
+    identical(telemetry$provenance$core_commit, git_commit(file.path(cfg$PATH_FDAPDE_CPP, "fdaPDE", "core"))) &&
+    identical(telemetry$provenance$native_binary_md5, binary_md5) &&
+    same_md5(telemetry$provenance$input_md5, data$input_md5) &&
+    identical(telemetry$provenance$preprocessing_md5, data$preprocessing_md5) &&
     split_matches
 }
 
@@ -49,8 +84,9 @@ fit_and_evaluate_models <- function(path_list, data, domain, batch_index, test_o
       if (file.exists(model_file) && !FORCE_FIT) {
         load(model_file)
         model <- get(object_name)
-        reuse_model <- native_model_matches_options(model, model_name, test_options)
+        reuse_model <- native_model_matches_options(model, model_name, test_options, data, path_list)
       }
+      if (reuse_model) cat(glue::glue("- Reusing cached model: {model_name}\n", .trim = FALSE))
       if (!reuse_model) {
         cat(glue::glue("- Fitting model: {model_name}\n", .trim = FALSE))
         model <- fit_model(model_name, domain, data, path_list, test_options)

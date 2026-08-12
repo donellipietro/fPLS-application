@@ -30,7 +30,13 @@ Historical simulation suites are intentionally not migrated here.
 - Local bootstrap source: `/Users/pietrodonelli/Documents/University/projects/fPLS/fPLS-simulation-study/libraries/fdaPDE-cpp`
 - The `hpc-torque` managed clone verifies and checks out the expected outer/core commits rather than following a later branch tip.
 
-The native application driver uses the new fdaPDE C++ `fPLS` implementation. It does not use the obsolete `fPLS-R`/`fdaPDE2` wrapper.
+The native application driver uses the fdaPDE C++ `fPLS` implementation. Its fPCR comparator
+implements the same native fPCA power-iteration equations locally around the fdaPDE elliptic
+smoother so the application can pass the configured Hutchinson probe count and seed explicitly
+to `edf()`. This avoids the pinned generic fPCA wrapper's implicit stochastic defaults without
+modifying the ignored dependency checkout. Telemetry records the exact implementation mode,
+probe count, seed, initialization, and selected lambdas. The application does not use the
+obsolete `fPLS-R`/`fdaPDE2` wrapper.
 
 ## Application Data
 
@@ -38,7 +44,7 @@ Raw and imputed brain data are external to Git. The default local data path is:
 
 `/Users/pietrodonelli/Documents/University/projects/fPLS/fPLS-regression/data/brain`
 
-Override it with `TESTBENCH_PATH_APPLICATION_DATA=/path/to/brain-data` before writing the profile `.env` or running the suite.
+Override it with `PATH_APPLICATION_DATA=/path/to/brain-data` before writing the profile `.env` or running the suite.
 
 The expected local files are:
 
@@ -51,12 +57,29 @@ The response recoding is preserved from the historical workflow after relabeling
 - `CTRL`: `sqrt(p_SCHZ / p_CTRL)`
 - `SCHZ`: `-sqrt(p_CTRL / p_SCHZ)`
 
-The active centering family is the authoritative `overall_mean` family. The historical script's later overwrite to `group_means` is not ported as active behavior.
+The active centering family is the authoritative `overall_mean` family: the complete-data run
+uses the overall mean of all subjects, while each outer-CV fit estimates that same kind of mean
+from its training subjects only. The historical script's later overwrite to `group_means` is not
+ported as active behavior.
+
+Every fit records MD5 checksums for the three input RDS files and the compiled native driver.
+Cached prepared data and native fits are reused only when those checksums, the preprocessing
+implementation, the full fit configuration, the split, and the outer and core fdaPDE commits
+match.
 
 ## Component And Out-Of-Sample Diagnostics
 
 The exploratory application run requests one sequential `H = 6` fit and evaluates prefixes at `H = 3:6`. This reports in-sample separation and spatial sensitivity within that fit.
 
-The out-of-sample study uses 10 repeats of stratified 5-fold CV. One sequential `H = 6` native model is fitted per outer training fold; its `H = 3:6` prefixes are evaluated without separate prefix refits. The training functional mean, prevalence-weighted response values, GCV-selected lambdas, response threshold, score standardization, and weighted linear SVM are all estimated without outer-test subjects. Test scores use the sequential residual projection defined by the native fPLS projection/deflation steps.
+The out-of-sample study uses 10 repeats of stratified 5-fold CV. One sequential `H = 6`
+R1-fPLS model and one sequential `H = 6` fPCR model are fitted per outer training fold; their
+`H = 3:6` prefixes are evaluated without separate prefix refits. The training functional mean,
+prevalence-weighted response, GCV-selected lambdas, latent-response OLS, threshold, score
+standardization, and weighted linear SVM are estimated without outer-test subjects. Both native
+reducers export sequential residual projections and must reproduce their exported training scores
+to numerical tolerance before held-out evaluation proceeds.
 
-Loading reproducibility is a distinct-fit comparison. Within each repeat, the paper response loading and SVM slider loading are compared pairwise across the five outer training fits using the tetrahedral P1 FEM mass correlation. Both quantities retain their response-derived CTRL-positive orientation; no post-hoc sign alignment is applied.
+Loading reproducibility is a distinct-fit comparison. Within each repeat and dimension reducer,
+the latent-response loading and SVM slider loading are compared pairwise across the five outer
+training fits using the tetrahedral P1 FEM mass correlation. Both retain their training-derived
+CTRL-positive orientation; no post-hoc sign alignment is applied and reducers are never pooled.

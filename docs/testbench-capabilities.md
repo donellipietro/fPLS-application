@@ -56,8 +56,6 @@ For setup details and machine profiles, start from the root
 - **Domain and mesh utilities:** `src/utils/domain_utils.R` and
   `src/utils/mesh_utils.R` import bundled meshes, generate domains/locations,
   and build grid meshes for spatial experiments.
-- **Data generators:** `src/data-generation/` contains 1D and 2D function
-  generators for synthetic functional/spatial test data.
 - **Directory and option helpers:** `src/utils/directories.R`,
   `src/utils/options.R`, `src/utils/config.R`, and
   `src/utils/test_groups.R` keep path, JSON option, profile, and grouped-test
@@ -79,13 +77,11 @@ For setup details and machine profiles, start from the root
 
 ## Suites And Outputs
 
-- **Suite template:** `tests/template_base` documents the expected suite shape
-  and is the starting point for new experiments.
-- **Bundled example:** `tests/smoothing-example` compares 1D SRPDE FEM and
-  spline solvers across `n_locs`, `n_nodes`, and SNR, including normalized RMSE,
-  memory, timing, and qualitative aggregate plots.
+- **Bundled application suite:** `tests/brain` runs the complete-data R1-fPLS
+  diagnostics and the leakage-controlled R1-fPLS versus fPCR comparison.
 - **Generated output roots:** the active profile controls result, image, test
   data, tmp, queue, log, build, dependency, and C++ paths.
 - **Cleanup and inspection:** `make clean`, `make clean_test`, `make
-  distclean`, and optional suite `inspect_results.R` scripts manage generated
-  queues, logs, results, images, data, compiled binaries, and dependencies.
+  distclean` manage generated queues, logs, results, images, data, compiled
+  binaries, and dependencies. This repository does not currently bundle an
+  interactive `inspect_results.R` script for the brain suite.
