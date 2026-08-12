@@ -36,7 +36,7 @@ queue_file <- file.path(path_list$queue, file_options)
 test_options <- fromJSON(queue_file, simplifyVector = TRUE)
 path_list <- update_paths(path_list, name_main_test, test_options)
 
-sink(file.path(path_list$logs, glue::glue("log_{test_options$name_test}.txt")), append = TRUE)
+sink(file.path(path_list$logs, glue::glue("log_{test_options$name_test}.txt")), append = FALSE)
 cat(glue::glue("- Running: {test_suite} / {test_options$name_test}\n", .trim = FALSE))
 
 path_list$batch <- config_path(path_list$results, "batch_1")
@@ -44,11 +44,16 @@ mkdir(path_list$batch)
 
 is_cv <- isTRUE(test_options$cross_validation$enabled)
 data_file <- file.path(path_list$batch, if (is_cv) "cv_split_provenance.rds" else "prepared_data.rds")
-if (!is_cv && file.exists(data_file) && !FORCE_FIT) {
-  data <- readRDS(data_file)
+input_md5 <- brain_input_md5(test_options$data$source_path)
+preprocessing_md5 <- brain_preprocessing_md5()
+cached_data <- if (!is_cv && file.exists(data_file) && !FORCE_FIT) readRDS(data_file) else NULL
+if (!is.null(cached_data) &&
+    isTRUE(all.equal(cached_data$input_md5, input_md5)) &&
+    identical(cached_data$preprocessing_md5, preprocessing_md5)) {
+  data <- cached_data
   cat("- Reuse prepared data\n")
 } else {
-  full_data <- load_brain_application_data(test_options$data$source_path)
+  full_data <- load_brain_application_data(test_options$data$source_path, input_md5)
   data <- if (is_cv) {
     prepare_brain_cv_split(
       full_data,
@@ -65,7 +70,9 @@ if (!is_cv && file.exists(data_file) && !FORCE_FIT) {
           "n_folds", "repeat_index", "fold_index", "seed", "train_indices", "test_indices", "test_counts"
         )],
         train_counts = data$counts,
-        training_overall_mean = data$overall_mean
+        training_overall_mean = data$overall_mean,
+        input_md5 = data$input_md5,
+        preprocessing_md5 = data$preprocessing_md5
       )
     } else data,
     data_file
@@ -74,6 +81,8 @@ if (!is_cv && file.exists(data_file) && !FORCE_FIT) {
     list(
       schema_version = 1L,
       source_path = test_options$data$source_path,
+      input_md5 = as.list(data$input_md5),
+      preprocessing_md5 = data$preprocessing_md5,
       centering = data$centering,
       response_counts = as.list(data$counts),
       n_subjects = data$dimensions$n_subjects,

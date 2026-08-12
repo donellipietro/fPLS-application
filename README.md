@@ -6,14 +6,14 @@ The application compares control and schizophrenia groups using imputed brain co
 
 ## Analysis Scope
 
-- Fit native R1-fPLS on the 3D brain mesh with `tol = 1e-8`, `max_iter = 1000`, and deterministic GCV seed `0`.
+- Fit native R1-fPLS and an fdaPDE-smoother-based fPCR comparator on the same 3D brain mesh, centered data, component prefixes, and regularization grid. The application controls fPCA GCV probe count and seed explicitly.
 - Inventory the historical application GCV grid, `10^seq(-3, -1, by = 0.2)`, in configuration.
 - Fit a single sequential `H = 6` model and report prefix-wise separation diagnostics for `H = 3:6`; `H = 3` remains the exploratory setting to be verified as the first prefix with perfect in-sample separation.
 - Use fPLS for dimension reduction, then estimate the maximum-margin linear boundary in each standardized score prefix `H = 3:6`. This is an in-sample exploratory boundary, not a cross-validated diagnostic classifier.
 - Map each score-space boundary to both its reconstructed connectivity pattern and its exact functional classifier coefficient, then compare both maps with their `H = 3` references using tetrahedral FEM mass correlations.
-- Estimate out-of-sample performance with 10 repeats of stratified 5-fold CV. Each outer fold fits one progressive `H = 6` model, evaluates `H = 3:6`, and keeps the outer test subjects untouched by centering, response recoding, GCV, thresholds, score scaling, and SVM fitting.
-- Compare the paper response loading and the SVM slider loading across distinct outer training fits with fixed CTRL orientation and tetrahedral FEM mass correlations. No post-hoc sign flip is used.
-- Record selected lambdas, component iterations, objective/monotonicity diagnostics, non-finite/failure status, wall-clock time, peak RAM, runtime profile, and exact fdaPDE commits.
+- Estimate out-of-sample performance with 10 repeats of stratified 5-fold CV. Each outer split fits progressive `H = 6` R1-fPLS and fPCR reducers, evaluates `H = 3:6`, and keeps the outer test subjects untouched by centering, response recoding, GCV, latent-response regression, thresholds, score scaling, and SVM fitting.
+- Compare latent-response and SVM slider loadings across distinct outer training fits within each dimension reducer, with fixed CTRL orientation and tetrahedral FEM mass correlations. No post-hoc sign flip or cross-reducer mixing is used.
+- Record selected fPLS/fPCA lambdas, component iterations, objective/monotonicity diagnostics, non-finite/failure status, wall-clock time, peak RAM, input and native-binary MD5 checksums, runtime profile, and exact fdaPDE commits.
 
 Raw brain data and generated outputs are intentionally outside Git. The default local data path is the historical ignored application input folder:
 
@@ -21,7 +21,7 @@ Raw brain data and generated outputs are intentionally outside Git. The default 
 /Users/pietrodonelli/Documents/University/projects/fPLS/fPLS-regression/data/brain
 ```
 
-Override it with `TESTBENCH_PATH_APPLICATION_DATA=/path/to/brain-data`.
+Override it with `PATH_APPLICATION_DATA=/path/to/brain-data`.
 
 The native fdaPDE stack is cloned locally into the ignored `libraries/fdaPDE-cpp` directory on `develop_fPLS`; the application does not run against the simulation repository checkout.
 
@@ -30,8 +30,8 @@ The native fdaPDE stack is cloned locally into the ignored `libraries/fdaPDE-cpp
 Write the profile and create generated directories:
 
 ```sh
-TESTBENCH_PATH_FDAPDE_CPP=/Users/pietrodonelli/Documents/University/projects/fPLS/fPLS-simulation-study/libraries/fdaPDE-cpp \
-TESTBENCH_FDAPDE_CPP_MANAGED=false \
+PATH_FDAPDE_CPP=/Users/pietrodonelli/Documents/University/projects/fPLS/fPLS-simulation-study/libraries/fdaPDE-cpp \
+FDAPDE_CPP_MANAGED=false \
 Rscript config.R --profile macbook --write-env
 
 Rscript config.R --profile macbook --create-dirs
@@ -84,46 +84,58 @@ VTU retains the unnormalized coefficient arrays.
 
 ## Out-Of-Sample Analysis
 
-The production study creates 50 independent outer fits: 5 stratified folds by 10 repeats.
+The production study creates 50 independent outer splits: 5 stratified folds by 10 repeats,
+with one R1-fPLS and one fPCR fit per split (100 native reducer fits in total).
 Every subject receives one held-out prediction per repeat. `H = 3` is the primary analysis;
 `H = 4:6` is a declared sensitivity analysis and is not selected using the held-out data.
 
-Two classifiers are reported. The first reconstructs the scalar fPLS response and learns its
-threshold on the outer training set. The second is an inverse-frequency-weighted linear SVM
-in standardized fPLS score space, with its cost selected using only outer-training data.
-Held-out scores are computed by the same sequential projection and deflation used by native
-fPLS, rather than by multiplying the data by an unrelated coefficient vector.
+The comparison has two explicit axes. The dimension reducer is either R1-fPLS or fPCR; the
+downstream classifier is either training-only OLS of the recoded response on the retained
+scores, with a training threshold, or an inverse-frequency-weighted linear SVM tuned only on
+outer-training data. Both reducers export a sequential held-out score transform that is checked
+against their native training scores. For fPCR, each fPCA loading is paired with a training-only
+projection scale before the same residual deflation is applied to training and held-out subjects.
+SVM cost tuning is classifier-only inner CV conditional on the reducer fitted to the complete
+outer-training fold; it is not nested CV of the entire supervised fPLS pipeline. The outer test
+fold remains untouched, so reported out-of-fold performance still evaluates the fitted pipeline,
+but this conditional tuning should not be presented as an unbiased inner estimate.
 
-Run the two-fit, one-component plumbing check locally:
+Run the two-fold, one-component plumbing check locally (four native reducer fits):
 
 ```sh
 SMOKE_TEST=1 make run_test TEST_SUITE=brain TEST_NAME=out_of_sample
 ```
 
 Production outputs are written to `results/brain/aggregate/out_of_sample/`. They include
-fold and pooled out-of-fold metrics, subject predictions, selected lambdas, SVM tuning,
-wall time and peak RAM, and cross-fit loading correlations. The primary imbalance-aware
+fold and pooled out-of-fold metrics, subject predictions, separate fPLS/fPCA lambdas, SVM tuning,
+wall time, peak RAM when the runtime permits measurement, its explicit availability status,
+and cross-fit loading correlations. The primary imbalance-aware
 metrics are SCHZ sensitivity, SCHZ average precision, SCHZ ROC AUC, CTRL specificity,
 balanced accuracy, and MCC. Quantiles across the 10 repeats describe split variability;
-they are not formal confidence intervals.
+they are not formal confidence intervals. `application_run_status.json` reports
+`smoke_complete` for the reduced plumbing check and currently reports
+`production_complete` only for the full saved canonical protocol. Non-smoke overrides that
+change the canonical 10-by-5 design report `noncanonical_complete` instead of claiming
+production completion.
 
 ## Torque Cluster
 
 The `hpc-torque` profile is aligned with canonical testbench runtime commit
 `89ba803b85c76b40aab8af2037b779fd29677924`. It submits compilation, distributes option
 files across PBS workers, exports the configured environment, and schedules aggregation
-with an `afterok` dependency. Each fPLS fit is single-threaded; independent outer folds run
+with an `afterok` dependency. Each fPLS/fPCR fit is single-threaded; independent outer folds run
 in parallel. The managed cluster clone is pinned to outer commit
 `ecbf23ef37571174c438ab68c3d21d7ecd5cf18f` and core commit
 `1b75249a7b49ccee72cb94207a9dc5daaa21848c` on their mapped fPLS branches.
 
 ```sh
-TESTBENCH_PATH_APPLICATION_DATA=/cluster/path/to/brain-data make build PROFILE=hpc-torque
+PATH_APPLICATION_DATA=/cluster/path/to/brain-data make build PROFILE=hpc-torque
 make run_test TEST_SUITE=brain TEST_NAME=out_of_sample
 ```
 
 The application defaults to at most 15 workers, one CPU and 16 GB per worker, with a
-12-hour wall-time request. `PBS_MAX_JOBS=50` requests one worker per fit when the scheduler
+12-hour wall-time request. `PBS_MAX_JOBS=50` requests one worker per outer split (each runs
+the two reducers sequentially) when the scheduler
 policy permits it. `PBS_QUEUE`, `PBS_ACCOUNT`, `PBS_MEM`, and `PBS_TIME` are available as
 run-time overrides. Preview submissions with `PBS_DRY_RUN=1`.
 

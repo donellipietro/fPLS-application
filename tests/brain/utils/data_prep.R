@@ -14,6 +14,19 @@ assert_brain_data_available <- function(data_dir) {
   }
 }
 
+brain_input_md5 <- function(data_dir) {
+  assert_brain_data_available(data_dir)
+  files <- required_brain_files(data_dir)
+  signature <- setNames(as.character(tools::md5sum(files)), basename(files))
+  if (anyNA(signature)) stop("Could not compute the application input MD5 signature")
+  signature
+}
+
+brain_preprocessing_md5 <- function() {
+  file <- normalizePath("tests/brain/utils/data_prep.R", mustWork = TRUE)
+  unname(as.character(tools::md5sum(file)))
+}
+
 load_brain_mesh <- function(data_dir) {
   assert_brain_data_available(data_dir)
   mesh <- readRDS(file.path(data_dir, "FEMbasis.Rds"))$mesh
@@ -42,7 +55,7 @@ recoded_response <- function(labels) {
   list(labels = labels, y = matrix(y, ncol = 1L), counts = table(labels))
 }
 
-load_brain_application_data <- function(data_dir) {
+load_brain_application_data <- function(data_dir, input_md5 = brain_input_md5(data_dir)) {
   assert_brain_data_available(data_dir)
 
   mesh <- load_brain_mesh(data_dir)
@@ -73,6 +86,8 @@ load_brain_application_data <- function(data_dir) {
     elements = elements,
     boundary = boundary,
     overall_mean = overall_mean,
+    input_md5 = input_md5,
+    preprocessing_md5 = brain_preprocessing_md5(),
     centering = "overall_mean",
     dimensions = list(
       n_subjects = nrow(X),
@@ -114,6 +129,8 @@ prepare_brain_cv_split <- function(data, n_folds, repeat_index, fold_index, seed
     elements = data$elements,
     boundary = data$boundary,
     overall_mean = train_mean,
+    input_md5 = data$input_md5,
+    preprocessing_md5 = data$preprocessing_md5,
     centering = "training_overall_mean",
     dimensions = list(
       n_subjects = length(train_indices),

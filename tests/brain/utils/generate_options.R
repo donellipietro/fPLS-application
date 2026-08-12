@@ -3,11 +3,11 @@
 # - Desc: Generates minimal application options without starting production runs.
 # = ========================================================================== =
 
-brain_model_catalog <- function() {
+brain_model_catalog <- function(include_fpcr = FALSE) {
   list(
-    names = c("R1_fPLS"),
-    labels = c("R1-fPLS"),
-    colors = c("#2b6cb0")
+    names = c("R1_fPLS", if (include_fpcr) "fPCR"),
+    labels = c("R1-fPLS", if (include_fpcr) "fPCR"),
+    colors = c("#2b6cb0", if (include_fpcr) "#2f855a")
   )
 }
 
@@ -21,9 +21,9 @@ generate_options <- function(test_suite, name_main_test, path_queue) {
     stop(glue::glue("The test {name_main_test} does not exist"))
   }
 
-  models <- brain_model_catalog()
   cfg <- load_config()
   is_cv <- name_main_test == "out_of_sample"
+  models <- brain_model_catalog(include_fpcr = is_cv)
   fit_native <- is_cv || (name_main_test != "smoke_overall_mean" && !SMOKE_TEST)
   n_comp <- if (is_cv && SMOKE_TEST) 1L else if (name_main_test %in% c("h_stability", "out_of_sample")) 6L else 3L
   n_folds <- if (is_cv) {
@@ -33,6 +33,7 @@ generate_options <- function(test_suite, name_main_test, path_queue) {
     if (SMOKE_TEST) 1L else as.integer(Sys.getenv("FPLS_CV_REPEATS", unset = "10"))
   } else 1L
   if (is_cv && (n_folds < 2L || n_repeats < 1L)) stop("invalid repeated-CV dimensions")
+  canonical_cv <- is_cv && !SMOKE_TEST && n_folds == 5L && n_repeats == 10L
 
   options <- list(
     model_names = models$names,
@@ -77,7 +78,13 @@ generate_options <- function(test_suite, name_main_test, path_queue) {
       authoritative_centering = "overall_mean",
       historical_group_mean_overwrite = "not_ported_as_active_behavior",
       validation_status = if (is_cv) {
-        if (SMOKE_TEST) "cross_validation_smoke" else "cross_validation_production"
+        if (SMOKE_TEST) {
+          "cross_validation_smoke"
+        } else if (canonical_cv) {
+          "cross_validation_production"
+        } else {
+          "cross_validation_noncanonical"
+        }
       } else if (fit_native) "planned_not_production_validated" else "smoke_data_preparation_only",
       template_runtime_commit = "89ba803b85c76b40aab8af2037b779fd29677924"
     )

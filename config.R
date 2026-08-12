@@ -56,6 +56,14 @@ TESTBENCH_CONFIG_PROFILES <- list(
 	      FDAPDE_CORE_REPOSITORY = FDAPDE_CORE_REPOSITORY,
 	      # Outer branch selected by this profile for the local fPLS stack
 	      FDAPDE_CPP_BRANCH = Sys.getenv("FDAPDE_CPP_BRANCH", unset = "develop_fPLS"),
+      FDAPDE_CPP_COMMIT = Sys.getenv(
+        "FDAPDE_CPP_COMMIT",
+        unset = "ecbf23ef37571174c438ab68c3d21d7ecd5cf18f"
+      ),
+      FDAPDE_CORE_COMMIT = Sys.getenv(
+        "FDAPDE_CORE_COMMIT",
+        unset = "1b75249a7b49ccee72cb94207a9dc5daaa21848c"
+      ),
       # Set false to use PATH_FDAPDE_CPP without modifying its Git checkout
       FDAPDE_CPP_MANAGED = Sys.getenv("FDAPDE_CPP_MANAGED", unset = "true"),
 
@@ -118,6 +126,14 @@ TESTBENCH_CONFIG_PROFILES <- list(
 	      FDAPDE_CORE_REPOSITORY = FDAPDE_CORE_REPOSITORY,
 	      # Outer branch selected by this profile for the local fPLS stack
 	      FDAPDE_CPP_BRANCH = Sys.getenv("FDAPDE_CPP_BRANCH", unset = "develop_fPLS"),
+      FDAPDE_CPP_COMMIT = Sys.getenv(
+        "FDAPDE_CPP_COMMIT",
+        unset = "ecbf23ef37571174c438ab68c3d21d7ecd5cf18f"
+      ),
+      FDAPDE_CORE_COMMIT = Sys.getenv(
+        "FDAPDE_CORE_COMMIT",
+        unset = "1b75249a7b49ccee72cb94207a9dc5daaa21848c"
+      ),
       # Set false to use PATH_FDAPDE_CPP without modifying its Git checkout
       FDAPDE_CPP_MANAGED = Sys.getenv("FDAPDE_CPP_MANAGED", unset = "true"),
 
@@ -197,6 +213,14 @@ TESTBENCH_CONFIG_PROFILES <- list(
 	      FDAPDE_CORE_REPOSITORY = FDAPDE_CORE_REPOSITORY,
 	      # Outer branch selected by this profile for the local fPLS stack
 	      FDAPDE_CPP_BRANCH = Sys.getenv("FDAPDE_CPP_BRANCH", unset = "develop_fPLS"),
+      FDAPDE_CPP_COMMIT = Sys.getenv(
+        "FDAPDE_CPP_COMMIT",
+        unset = "ecbf23ef37571174c438ab68c3d21d7ecd5cf18f"
+      ),
+      FDAPDE_CORE_COMMIT = Sys.getenv(
+        "FDAPDE_CORE_COMMIT",
+        unset = "1b75249a7b49ccee72cb94207a9dc5daaa21848c"
+      ),
       # Set false to use PATH_FDAPDE_CPP without modifying its Git checkout
       FDAPDE_CPP_MANAGED = Sys.getenv("FDAPDE_CPP_MANAGED", unset = "true"),
 

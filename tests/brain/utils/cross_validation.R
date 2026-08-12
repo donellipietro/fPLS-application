@@ -3,7 +3,7 @@
 # - Desc: Leakage-safe held-out projection, classification, and metrics.
 # = ========================================================================== =
 
-project_fpls_scores <- function(X_centered, directions, loadings) {
+project_reducer_scores <- function(X_centered, directions, loadings) {
   residual <- X_centered
   scores <- matrix(0, nrow(X_centered), ncol(directions))
   for (component in seq_len(ncol(directions))) {
@@ -54,7 +54,8 @@ classification_metrics <- function(labels, ctrl_score, threshold = 0, predicted 
     balanced_accuracy = 0.5 * (sensitivity + specificity),
     roc_auc_schz = schz_auc(labels, ctrl_score),
     average_precision_schz = schz_average_precision(labels, ctrl_score),
-    mcc = if (denominator > 0) (tp * tn - fp * fn) / denominator else NaN,
+    mcc = if (denominator > 0) (tp * tn - fp * fn) / denominator else 0,
+    degenerate_prediction = denominator == 0,
     true_schz = tp,
     true_ctrl = tn,
     false_schz = fp,
@@ -144,59 +145,92 @@ tune_balanced_linear_svm <- function(scores, labels, costs, n_folds, seed) {
 }
 
 evaluate_cv_model <- function(model, data, test_options) {
+  reducer <- model$MODE
+  if (!reducer %in% c("R1_fPLS", "fPCR")) stop("unsupported dimension reducer")
+  reducer_label <- if (reducer == "fPCR") "fPCR" else "R1-fPLS"
   if (!identical(model$status, 0L)) {
-    return(list(failed = TRUE, status = model$status, validation_status = "native_fit_failed"))
+    return(list(
+      failed = TRUE,
+      status = model$status,
+      dimension_reducer = reducer_label,
+      validation_status = "native_fit_failed"
+    ))
   }
   cv <- data$cross_validation
   components <- as.integer(test_options$cross_validation$evaluation_components)
   directions <- model$results$X_space_directions
   loadings <- model$results$X_loadings
-  y_loadings <- model$results$Y_loadings
-  train_scores <- project_fpls_scores(data$X_centered, directions, loadings)
-  test_scores <- project_fpls_scores(cv$test_X_centered, directions, loadings)
+  train_scores <- project_reducer_scores(data$X_centered, directions, loadings)
+  test_scores <- project_reducer_scores(cv$test_X_centered, directions, loadings)
   projection_error <- max(abs(train_scores - model$results$X_latent_scores))
-  if (projection_error > 1e-9) stop("held-out projection does not reproduce native training scores")
+  if (!is.finite(projection_error) || projection_error > 1e-9) {
+    stop(reducer_label, " held-out projection does not reproduce native training scores")
+  }
+  diagnostics <- data.frame(
+    component = seq_len(test_options$model$n_comp),
+    iterations = as.integer(model$results$iteration_counts),
+    monotone = as.logical(model$results$monotone),
+    hit_max_iter = as.logical(model$results$hit_max_iter),
+    finite_solution = as.logical(model$results$finite_solution)
+  )
+  if (any(!diagnostics$finite_solution) || any(!diagnostics$monotone)) {
+    stop(reducer_label, " native fit has a non-finite or non-monotone component")
+  }
+  if (identical(test_options$provenance$validation_status, "cross_validation_production") &&
+      any(diagnostics$hit_max_iter)) {
+    stop(reducer_label, " production fit reached the component iteration limit")
+  }
 
   metrics <- list()
   predictions <- list()
   tuning <- list()
-  paper_maps <- list()
+  response_maps <- list()
   svm_maps <- list()
   row <- 0L
   for (h in components) {
-    train_pls <- drop(train_scores[, seq_len(h), drop = FALSE] %*% t(y_loadings[, seq_len(h), drop = FALSE]))
-    test_pls <- drop(test_scores[, seq_len(h), drop = FALSE] %*% t(y_loadings[, seq_len(h), drop = FALSE]))
-    threshold <- training_threshold(data$labels, train_pls)
-    train_scale <- sd(train_pls)
-    if (!is.finite(train_scale) || train_scale <= 0) stop("fPLS reconstructed response is constant")
-    test_pls_margin <- (test_pls - threshold) / train_scale
+    prefix_scores <- train_scores[, seq_len(h), drop = FALSE]
+    coefficients <- qr.solve(prefix_scores, data$Y)
+    if (any(!is.finite(coefficients))) stop(reducer_label, " latent-response OLS is non-finite")
+    coefficient_norm <- sqrt(sum(coefficients^2))
+    if (!is.finite(coefficient_norm) || coefficient_norm <= 0) {
+      stop(reducer_label, " latent-response OLS produced a zero normal")
+    }
+    train_response <- drop(prefix_scores %*% coefficients)
+    test_response <- drop(test_scores[, seq_len(h), drop = FALSE] %*% coefficients)
+    threshold <- training_threshold(data$labels, train_response)
+    train_scale <- sd(train_response)
+    if (!is.finite(train_scale) || train_scale <= 0) stop("reconstructed response is constant")
+    test_response_margin <- (test_response - threshold) / train_scale
 
     row <- row + 1L
     metrics[[row]] <- cbind(
-      method = "PLS response",
+      dimension_reducer = reducer_label,
+      classifier = "Latent response",
       retained_components = h,
       sample = "train",
       selected_cost = NA_real_,
       threshold = threshold,
-      classification_metrics(data$labels, train_pls, threshold)
+      classification_metrics(data$labels, train_response, threshold)
     )
     row <- row + 1L
     metrics[[row]] <- cbind(
-      method = "PLS response",
+      dimension_reducer = reducer_label,
+      classifier = "Latent response",
       retained_components = h,
       sample = "test",
       selected_cost = NA_real_,
       threshold = threshold,
-      classification_metrics(cv$test_labels, test_pls, threshold)
+      classification_metrics(cv$test_labels, test_response, threshold)
     )
     predictions[[length(predictions) + 1L]] <- data.frame(
       subject_index = cv$test_indices,
       actual = as.character(cv$test_labels),
-      predicted = ifelse(test_pls >= threshold, "CTRL", "SCHZ"),
-      method = "PLS response",
+      predicted = ifelse(test_response >= threshold, "CTRL", "SCHZ"),
+      dimension_reducer = reducer_label,
+      classifier = "Latent response",
       retained_components = h,
-      ctrl_score = test_pls,
-      classification_margin = test_pls_margin
+      ctrl_score = test_response,
+      classification_margin = test_response_margin
     )
 
     tuning_result <- tune_balanced_linear_svm(
@@ -215,7 +249,8 @@ evaluate_cv_model <- function(model, data, test_options) {
     test_svm <- predict_balanced_linear_svm(svm, test_scores[, seq_len(h), drop = FALSE])
     row <- row + 1L
     metrics[[row]] <- cbind(
-      method = "Balanced linear SVM",
+      dimension_reducer = reducer_label,
+      classifier = "Balanced linear SVM",
       retained_components = h,
       sample = "train",
       selected_cost = svm$cost,
@@ -224,7 +259,8 @@ evaluate_cv_model <- function(model, data, test_options) {
     )
     row <- row + 1L
     metrics[[row]] <- cbind(
-      method = "Balanced linear SVM",
+      dimension_reducer = reducer_label,
+      classifier = "Balanced linear SVM",
       retained_components = h,
       sample = "test",
       selected_cost = svm$cost,
@@ -235,16 +271,22 @@ evaluate_cv_model <- function(model, data, test_options) {
       subject_index = cv$test_indices,
       actual = as.character(cv$test_labels),
       predicted = ifelse(test_svm >= 0, "CTRL", "SCHZ"),
-      method = "Balanced linear SVM",
+      dimension_reducer = reducer_label,
+      classifier = "Balanced linear SVM",
       retained_components = h,
       ctrl_score = test_svm,
       classification_margin = test_svm / svm$normal_norm
     )
-    tuning[[as.character(h)]] <- transform(tuning_result$results, retained_components = h)
+    tuning[[as.character(h)]] <- transform(
+      tuning_result$results,
+      dimension_reducer = reducer_label,
+      classifier = "Balanced linear SVM",
+      retained_components = h
+    )
 
-    response_normal <- as.numeric(y_loadings[1, seq_len(h)])
-    paper_maps[[as.character(h)]] <- drop(
-      loadings[, seq_len(h), drop = FALSE] %*% (response_normal / sqrt(sum(response_normal^2)))
+    response_normal <- as.numeric(coefficients)
+    response_maps[[as.character(h)]] <- drop(
+      loadings[, seq_len(h), drop = FALSE] %*% (response_normal / coefficient_norm)
     )
     svm_maps[[as.character(h)]] <- drop(
       loadings[, seq_len(h), drop = FALSE] %*% (svm$scale * svm$unit_normal)
@@ -254,6 +296,7 @@ evaluate_cv_model <- function(model, data, test_options) {
   list(
     failed = FALSE,
     status = 0L,
+    dimension_reducer = reducer_label,
     n_comp = test_options$model$n_comp,
     cross_validation = list(
       repeat_index = cv$repeat_index,
@@ -267,15 +310,23 @@ evaluate_cv_model <- function(model, data, test_options) {
     predictions = do.call(rbind, predictions),
     svm_tuning = do.call(rbind, tuning),
     loading_maps = list(
-      `Paper response loading` = paper_maps,
+      `Latent response loading` = response_maps,
       `SVM slider loading` = svm_maps
     ),
-    direction_lambda = model$results$direction_lambdas[, 1],
-    loading_lambda = model$results$loading_lambdas[, 1],
+    direction_lambda = if (is.null(model$results$direction_lambdas)) {
+      rep(NA_real_, test_options$model$n_comp)
+    } else as.numeric(model$results$direction_lambdas[, 1]),
+    loading_lambda = if (is.null(model$results$loading_lambdas)) {
+      rep(NA_real_, test_options$model$n_comp)
+    } else as.numeric(model$results$loading_lambdas[, 1]),
+    fpca_lambda = if (is.null(model$results$fpca_lambdas)) {
+      rep(NA_real_, test_options$model$n_comp)
+    } else as.numeric(model$results$fpca_lambdas[, 1]),
     projection_max_abs_error = projection_error,
+    component_diagnostics = diagnostics,
     execution_time = model$results$execution_time,
     peak_ram_mib = model$results$peak_ram_mib,
     provenance = model$results$provenance,
-    validation_status = "outer_test_fold_held_out"
+    validation_status = test_options$provenance$validation_status
   )
 }
