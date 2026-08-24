@@ -34,12 +34,16 @@ regularization_boundary_diagnostics <- function(model, test_options) {
   )
 }
 
-assert_production_grid_interior <- function(diagnostics, validation_status) {
+report_production_grid_boundaries <- function(diagnostics, validation_status) {
   production <- validation_status %in% c("complete_data_production", "cross_validation_production")
   boundary <- diagnostics$selected_at_lower_boundary | diagnostics$selected_at_upper_boundary
   if (production && any(boundary)) {
     hits <- diagnostics[boundary, c("quantity", "component", "selected_lambda", "grid_min", "grid_max")]
-    stop("production GCV selected a grid boundary:\n", paste(capture.output(print(hits, row.names = FALSE)), collapse = "\n"))
+    warning(
+      "production GCV selected a grid boundary; run continues for curve inspection:\n",
+      paste(capture.output(print(hits, row.names = FALSE)), collapse = "\n"),
+      call. = FALSE
+    )
   }
   invisible(diagnostics)
 }
@@ -93,7 +97,7 @@ evaluate_results <- function(model, data, test_options) {
 
   n_comp <- test_options$model$n_comp
   regularization_boundaries <- regularization_boundary_diagnostics(model, test_options)
-  assert_production_grid_interior(regularization_boundaries, test_options$provenance$validation_status)
+  report_production_grid_boundaries(regularization_boundaries, test_options$provenance$validation_status)
   separation <- do.call(rbind, lapply(seq_len(n_comp), function(h) {
     oriented <- orient_ctrl_scores(data$labels, as.numeric(model$results$Y_hat[[h]]))
     scores <- oriented$scores

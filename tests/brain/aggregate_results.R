@@ -131,6 +131,10 @@ fpls_loading_gcv <- do.call(rbind, lapply(names(all_evaluations), function(name)
   if (is.null(value$fpls_loading_gcv)) return(NULL)
   cbind(scenario = value$scenario, value$fpls_loading_gcv)
 }))
+all_gcv_selections_interior <- is.null(regularization_boundaries) || !any(
+  regularization_boundaries$selected_at_lower_boundary |
+    regularization_boundaries$selected_at_upper_boundary
+)
 
 if (requested == "out_of_sample") {
   missing_evaluations <- setdiff(expected_evaluations, names(all_evaluations))
@@ -177,6 +181,9 @@ if (requested == "out_of_sample") {
       pretty = TRUE
     )
     stop("CV evaluations have missing or mixed saved validation provenance: ", paste(validation_statuses, collapse = ", "))
+  }
+  if (identical(run_status, "production_complete") && !all_gcv_selections_interior) {
+    run_status <- "production_complete_with_GCV_boundary_selection"
   }
   image_dir <- file.path(cfg$PATH_IMAGES, test_suite, "aggregate", requested)
   write_json(
@@ -250,10 +257,7 @@ if (requested == "out_of_sample") {
         fpls = "cv_selected_fpls_lambdas.csv",
         fpca = "cv_selected_fpca_lambdas.csv",
         boundary_diagnostics = "cv_regularization_boundary_diagnostics.csv",
-        all_production_selections_interior = !any(
-          regularization_boundaries$selected_at_lower_boundary |
-            regularization_boundaries$selected_at_upper_boundary
-        ),
+        all_production_selections_interior = all_gcv_selections_interior,
         fpca_gcv = "application_local_power_iteration_with_explicit_Hutchinson_probe_count_and_seed"
       ),
       uncertainty = "q025_and_q975_are_empirical_repeat_variability_not_formal_confidence_intervals",
@@ -545,14 +549,11 @@ write_json(
     schema_version = 2L,
     requested = requested,
     run_complete = TRUE,
-    status = "complete",
+    status = if (all_gcv_selections_interior) "complete" else "complete_with_GCV_boundary_selection",
     validation_status = unique(vapply(all_evaluations, function(value) {
       as.character(value$provenance$validation_status)
     }, character(1))),
-    all_production_GCV_selections_interior = is.null(regularization_boundaries) || !any(
-      regularization_boundaries$selected_at_lower_boundary |
-        regularization_boundaries$selected_at_upper_boundary
-    ),
+    all_production_GCV_selections_interior = all_gcv_selections_interior,
     first_H_with_perfect_in_sample_separation = if (!is.null(separation) && any(separation$perfect_separation)) {
       as.character(min(separation$prefix_components[separation$perfect_separation]))
     } else "not_evaluated",

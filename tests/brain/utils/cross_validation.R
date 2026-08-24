@@ -157,7 +157,7 @@ evaluate_cv_model <- function(model, data, test_options) {
     ))
   }
   regularization_boundaries <- regularization_boundary_diagnostics(model, test_options)
-  assert_production_grid_interior(regularization_boundaries, test_options$provenance$validation_status)
+  report_production_grid_boundaries(regularization_boundaries, test_options$provenance$validation_status)
   cv <- data$cross_validation
   components <- as.integer(test_options$cross_validation$evaluation_components)
   directions <- model$results$X_space_directions
