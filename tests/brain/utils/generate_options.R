@@ -12,7 +12,7 @@ brain_model_catalog <- function(include_fpcr = FALSE) {
 }
 
 standard_lambda_grid <- function() {
-  10^(-9:2)
+  10^(-12:2)
 }
 
 generate_options <- function(test_suite, name_main_test, path_queue) {
@@ -69,7 +69,7 @@ generate_options <- function(test_suite, name_main_test, path_queue) {
       max_iter = if (is_cv && SMOKE_TEST) 1L else 1000L,
       tolerance = 1e-8,
       fixed_lambda_status = "inactive_unless_calibration_is_fixed",
-      status = "standardized_simulation_wide_GCV_grid"
+      status = "application_expanded_GCV_grid_after_H6_loading2_hit_1e-9"
     ),
     mean_estimation = list(
       method = "tetrahedral_P1_FEM_GCV_smoothed_functional_mean",
@@ -77,7 +77,7 @@ generate_options <- function(test_suite, name_main_test, path_queue) {
       gcv_seed = 0L,
       gcv_probes = if (SMOKE_TEST) 5L else 100L,
       scope = if (is_cv) "outer_training_subjects_only" else "all_subjects",
-      status = "standardized_simulation_wide_GCV_grid_including_historical_1e-2"
+      status = "application_expanded_GCV_grid_including_historical_1e-2"
     ),
     provenance = list(
       schema_version = 2L,

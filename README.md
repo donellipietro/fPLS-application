@@ -7,7 +7,7 @@ The application compares control and schizophrenia groups using imputed brain co
 ## Analysis Scope
 
 - Fit native R1-fPLS and an fdaPDE-smoother-based fPCR comparator on the same 3D brain mesh, functionally centered data, component prefixes, and regularization grid. The application controls functional-mean, fPLS, and fPCA GCV probe counts and seeds explicitly.
-- Use the standardized simulation-wide GCV grid `10^(-9:2)` for the functional mean, fPLS, and fPCA; it includes the historical mean value `1e-2`. Production evaluation fails if any selected lambda is at either grid boundary.
+- Use the application-expanded GCV grid `10^(-12:2)` for the functional mean, fPLS, and fPCA. It contains the simulation grid and the historical mean value `1e-2`; its lower extension follows the first controlled H=6 run selecting `1e-9` for fPLS loading 2. Production evaluation fails if any selected lambda is at either grid boundary.
 - Fit a single sequential `H = 6` model and report prefix-wise separation diagnostics for `H = 3:6`; `H = 3` remains the exploratory setting to be verified as the first prefix with perfect in-sample separation.
 - Use fPLS for dimension reduction, then estimate the maximum-margin linear boundary in each standardized score prefix `H = 3:6`. This is an in-sample exploratory boundary, not a cross-validated diagnostic classifier.
 - Map each score-space boundary to both its reconstructed connectivity pattern and its exact functional classifier coefficient, then compare both maps with their `H = 3` references using tetrahedral FEM mass correlations.

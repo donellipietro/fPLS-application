@@ -62,8 +62,10 @@ native driver first computes the nodewise empirical mean over its training rows,
 mean in the tetrahedral P1 finite-element space with the gradient penalty, and subtracts the
 fitted nodal mean from every predictor row. The complete-data run supplies all subjects; each
 outer-CV fit supplies outer-training subjects only and applies the resulting fitted mean to its
-held-out rows. The mean is selected by genuine GCV over the standardized simulation-wide grid
-`10^(-9:2)`, which includes the archived `1e-2` value. The grid, seed, probe count, EDF, GCV score, selected
+held-out rows. The mean is selected by genuine GCV over the application-expanded grid
+`10^(-12:2)`, which contains the simulation grid and archived `1e-2` value. The lower extension
+was triggered by the first controlled H=6 run selecting the former `1e-9` lower boundary for
+fPLS loading 2. The grid, seed, probe count, EDF, GCV score, selected
 lambda, coefficients, and nodal fitted mean are exported. The historical script's later overwrite to `group_means` is not
 ported as active behavior.
 
