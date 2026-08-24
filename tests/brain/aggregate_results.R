@@ -116,6 +116,16 @@ if (length(failed_names) > 0L) {
   quit(save = "no", status = 2)
 }
 
+regularization_boundaries <- do.call(rbind, lapply(names(all_evaluations), function(name) {
+  value <- all_evaluations[[name]]
+  if (is.null(value$regularization_boundaries)) return(NULL)
+  cbind(
+    scenario = value$scenario,
+    dimension_reducer = value$dimension_reducer,
+    value$regularization_boundaries
+  )
+}))
+
 if (requested == "out_of_sample") {
   missing_evaluations <- setdiff(expected_evaluations, names(all_evaluations))
   if (length(missing_evaluations) > 0L) {
@@ -233,6 +243,11 @@ if (requested == "out_of_sample") {
       regularization_outputs = list(
         fpls = "cv_selected_fpls_lambdas.csv",
         fpca = "cv_selected_fpca_lambdas.csv",
+        boundary_diagnostics = "cv_regularization_boundary_diagnostics.csv",
+        all_production_selections_interior = !any(
+          regularization_boundaries$selected_at_lower_boundary |
+            regularization_boundaries$selected_at_upper_boundary
+        ),
         fpca_gcv = "application_local_power_iteration_with_explicit_Hutchinson_probe_count_and_seed"
       ),
       uncertainty = "q025_and_q975_are_empirical_repeat_variability_not_formal_confidence_intervals",
@@ -244,6 +259,36 @@ if (requested == "out_of_sample") {
   )
   cat("Out-of-sample CV aggregation completed.\n")
   quit(save = "no", status = 0)
+}
+
+if (identical(requested, "h_stability")) {
+  validation_statuses <- unique(vapply(all_evaluations, function(value) {
+    status <- value$provenance$validation_status
+    if (is.null(status)) NA_character_ else as.character(status)
+  }, character(1)))
+  if (!identical(validation_statuses, "complete_data_production")) {
+    write_json(
+      list(
+        schema_version = 2L,
+        requested = requested,
+        run_complete = FALSE,
+        status = "missing_complete_data_production_provenance",
+        validation_statuses = validation_statuses
+      ),
+      file.path(aggregate_dir, "application_run_status.json"),
+      auto_unbox = TRUE,
+      pretty = TRUE
+    )
+    stop("H-stability aggregation requires complete_data_production provenance")
+  }
+}
+
+if (!is.null(regularization_boundaries)) {
+  write.csv(
+    regularization_boundaries,
+    file.path(aggregate_dir, "regularization_boundary_diagnostics.csv"),
+    row.names = FALSE
+  )
 }
 
 separation <- do.call(rbind, lapply(names(all_evaluations), function(name) {
@@ -285,7 +330,6 @@ if (!is.null(separation)) {
   )
 }
 
-loading_stability <- NULL
 beta_stability_summary <- NULL
 maximum_margin_summary <- NULL
 classifier_formula_max_abs_error <- NULL
@@ -304,18 +348,30 @@ if (requested == "h_stability" && has_h6_fpls) {
     check.names = FALSE
   )))
   y_loadings <- as.matrix(suppressWarnings(read.csv(file.path(raw_dir, "y_loadings.csv"), check.names = FALSE)))
-  loading_stability <- first_rotated_loading_stability(
-    x_loadings = x_loadings,
-    y_loadings = y_loadings,
-    points = points,
-    elements = elements
-  )
   beta_coefficients <- setNames(lapply(3:6, function(h) {
     as.matrix(suppressWarnings(read.csv(file.path(raw_dir, glue::glue("beta_coefficients_h{h}.csv")), check.names = FALSE)))
   }), as.character(3:6))
   beta_stability_summary <- beta_stability(beta_coefficients, points, elements)
+
+  prepared_data <- readRDS(file.path(batch_dir, "prepared_data.rds"))
+  x_directions <- as.matrix(suppressWarnings(read.csv(
+    file.path(raw_dir, "x_space_directions_coefficients.csv"),
+    check.names = FALSE
+  )))
+  maximum_margin_summary <- maximum_margin_prefix_sensitivity(
+    scores = as.matrix(suppressWarnings(read.csv(file.path(raw_dir, "x_latent_scores.csv"), check.names = FALSE))),
+    x_loadings = x_loadings,
+    x_directions = x_directions,
+    labels = prepared_data$labels,
+    points = points,
+    elements = elements
+  )
+
   stability <- rbind(
-    transform(loading_stability$summary, quantity = "Decision-boundary loading f1"),
+    maximum_margin_summary$spatial_stability[
+      maximum_margin_summary$spatial_stability$quantity == "Maximum-margin slider loading",
+      , drop = FALSE
+    ],
     transform(beta_stability_summary$summary, quantity = "Regression coefficient beta")
   )
   write.csv(stability, file.path(aggregate_dir, "decision_boundary_and_beta_stability_by_H.csv"), row.names = FALSE)
@@ -332,20 +388,6 @@ if (requested == "h_stability" && has_h6_fpls) {
     width = 7,
     height = 4.5,
     dpi = 180
-  )
-
-  prepared_data <- readRDS(file.path(batch_dir, "prepared_data.rds"))
-  x_directions <- as.matrix(suppressWarnings(read.csv(
-    file.path(raw_dir, "x_space_directions_coefficients.csv"),
-    check.names = FALSE
-  )))
-  maximum_margin_summary <- maximum_margin_prefix_sensitivity(
-    scores = as.matrix(suppressWarnings(read.csv(file.path(raw_dir, "x_latent_scores.csv"), check.names = FALSE))),
-    x_loadings = x_loadings,
-    x_directions = x_directions,
-    labels = prepared_data$labels,
-    points = points,
-    elements = elements
   )
 
   classifier_formula_max_abs_error <- max(vapply(3:6, function(h) {
@@ -487,10 +529,17 @@ if (requested == "h_stability" && has_h6_fpls) {
 
 write_json(
   list(
-    schema_version = 1L,
+    schema_version = 2L,
     requested = requested,
     run_complete = TRUE,
     status = "complete",
+    validation_status = unique(vapply(all_evaluations, function(value) {
+      as.character(value$provenance$validation_status)
+    }, character(1))),
+    all_production_GCV_selections_interior = is.null(regularization_boundaries) || !any(
+      regularization_boundaries$selected_at_lower_boundary |
+        regularization_boundaries$selected_at_upper_boundary
+    ),
     first_H_with_perfect_in_sample_separation = if (!is.null(separation) && any(separation$perfect_separation)) {
       as.character(min(separation$prefix_components[separation$perfect_separation]))
     } else "not_evaluated",
@@ -501,15 +550,15 @@ write_json(
       sensitivity_class = "SCHZ",
       specificity_class = "CTRL"
     ),
-    decision_boundary_loading_stability = if (is.null(loading_stability)) {
+    decision_boundary_loading_stability = if (is.null(maximum_margin_summary)) {
       "requires_H6_fit"
     } else {
       list(
-        reference = "rotated_H3_prefix",
-        comparisons = "rotated_H4_to_H6_prefixes_first_loading_only",
-        rotation = "historical_Gram_Schmidt_Y_loading_basis",
-        metric = "sign_aligned_tetrahedral_P1_FEM_mass_relative_norm",
-        rotated_loadings_2_and_3 = "not_reported_not_scientific_targets"
+        reference = "H3_maximum_margin_SVM_slider_loading",
+        comparisons = "H4_to_H6_maximum_margin_SVM_slider_loadings",
+        definition = "R_H_times_score_SD_times_unit_standardized_SVM_normal",
+        metric = "tetrahedral_P1_FEM_mass_relative_norm_without_posthoc_sign_flip_CTRL_orientation_fixed",
+        Gram_Schmidt_rotation = "removed_from_active_analysis"
       )
     },
     beta_stability = if (is.null(beta_stability_summary)) {

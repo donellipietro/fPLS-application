@@ -70,7 +70,7 @@ if (!is.null(cached_data) &&
           "n_folds", "repeat_index", "fold_index", "seed", "train_indices", "test_indices", "test_counts"
         )],
         train_counts = data$counts,
-        training_overall_mean = data$overall_mean,
+        mean_estimation_scope = data$centering,
         input_md5 = data$input_md5,
         preprocessing_md5 = data$preprocessing_md5
       )
@@ -84,6 +84,7 @@ if (!is.null(cached_data) &&
       input_md5 = as.list(data$input_md5),
       preprocessing_md5 = data$preprocessing_md5,
       centering = data$centering,
+      mean_estimation = test_options$mean_estimation,
       response_counts = as.list(data$counts),
       n_subjects = data$dimensions$n_subjects,
       n_nodes = data$dimensions$n_nodes,
@@ -95,7 +96,7 @@ if (!is.null(cached_data) &&
         train_indices = data$cross_validation$train_indices,
         test_indices = data$cross_validation$test_indices,
         test_counts = as.list(data$cross_validation$test_counts),
-        leakage_control = "mean_response_GCV_threshold_and_classifier_fit_on_training_only"
+        leakage_control = "functional_mean_response_GCV_threshold_and_classifier_fit_on_training_only"
       ) else NULL,
       response_recoding = list(
         CTRL = "sqrt(p_SCHZ / p_CTRL)",
@@ -106,7 +107,11 @@ if (!is.null(cached_data) &&
     auto_unbox = TRUE,
     pretty = TRUE
   )
-  cat(if (is_cv) "- Prepared training-only CV fold\n" else "- Prepared authoritative overall-mean centered data\n")
+  cat(if (is_cv) {
+    "- Prepared raw training-only CV fold; native fit will estimate its functional mean\n"
+  } else {
+    "- Prepared raw complete data; native fit will estimate the overall functional mean\n"
+  })
 }
 
 test_options$batch_index <- 1L

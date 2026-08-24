@@ -8,6 +8,7 @@ native_model_matches_options <- function(model, model_name, test_options, data, 
   telemetry <- model$results$telemetry
   same <- function(left, right) isTRUE(all.equal(left, right))
   fit_configuration <- telemetry$provenance$fit_configuration
+  mean_configuration <- telemetry$provenance$mean_estimation_configuration
   configured <- function(name) {
     value <- telemetry[[name]]
     if (is.null(value)) fit_configuration[[name]] else value
@@ -52,11 +53,20 @@ native_model_matches_options <- function(model, model_name, test_options, data, 
     same(as.numeric(configured("lambda_grid")), test_options$regularization$lambda_grid) &&
     same(configured("gcv_seed"), test_options$regularization$gcv_seed) &&
     same(configured("gcv_probes"), test_options$regularization$gcv_probes) &&
+    identical(telemetry$centering, "training_overall_gcv_smoothed_functional_mean") &&
+    same(as.numeric(telemetry$mean_lambda_grid), test_options$mean_estimation$lambda_grid) &&
+    same(telemetry$mean_gcv_seed, test_options$mean_estimation$gcv_seed) &&
+    same(telemetry$mean_gcv_probes, test_options$mean_estimation$gcv_probes) &&
+    same(as.numeric(mean_configuration$lambda_grid), test_options$mean_estimation$lambda_grid) &&
+    same(mean_configuration$gcv_seed, test_options$mean_estimation$gcv_seed) &&
+    same(mean_configuration$gcv_probes, test_options$mean_estimation$gcv_probes) &&
     same(configured("max_iter"), test_options$regularization$max_iter) &&
     same(configured("tolerance"), test_options$regularization$tolerance) &&
     same(telemetry$write_reconstructions, isTRUE(test_options$output$write_reconstructions)) &&
     same(telemetry$write_beta, isTRUE(test_options$output$write_beta)) &&
     identical(telemetry$provenance$centering, data$centering) &&
+    identical(telemetry$provenance$application_commit, git_commit(path_list$repo)) &&
+    identical(telemetry$provenance$application_worktree_clean, git_is_clean(path_list$repo)) &&
     identical(telemetry$provenance$outer_commit, git_commit(cfg$PATH_FDAPDE_CPP)) &&
     identical(telemetry$provenance$core_commit, git_commit(file.path(cfg$PATH_FDAPDE_CPP, "fdaPDE", "core"))) &&
     identical(telemetry$provenance$native_binary_md5, binary_md5) &&

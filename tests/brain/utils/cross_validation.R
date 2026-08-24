@@ -156,12 +156,17 @@ evaluate_cv_model <- function(model, data, test_options) {
       validation_status = "native_fit_failed"
     ))
   }
+  regularization_boundaries <- regularization_boundary_diagnostics(model, test_options)
+  assert_production_grid_interior(regularization_boundaries, test_options$provenance$validation_status)
   cv <- data$cross_validation
   components <- as.integer(test_options$cross_validation$evaluation_components)
   directions <- model$results$X_space_directions
   loadings <- model$results$X_loadings
-  train_scores <- project_reducer_scores(data$X_centered, directions, loadings)
-  test_scores <- project_reducer_scores(cv$test_X_centered, directions, loadings)
+  training_mean <- drop(model$results$functional_mean_locations)
+  train_X_centered <- sweep(data$X, 2L, training_mean, check.margin = FALSE)
+  test_X_centered <- sweep(cv$test_X, 2L, training_mean, check.margin = FALSE)
+  train_scores <- project_reducer_scores(train_X_centered, directions, loadings)
+  test_scores <- project_reducer_scores(test_X_centered, directions, loadings)
   projection_error <- max(abs(train_scores - model$results$X_latent_scores))
   if (!is.finite(projection_error) || projection_error > 1e-9) {
     stop(reducer_label, " held-out projection does not reproduce native training scores")
@@ -322,6 +327,8 @@ evaluate_cv_model <- function(model, data, test_options) {
     fpca_lambda = if (is.null(model$results$fpca_lambdas)) {
       rep(NA_real_, test_options$model$n_comp)
     } else as.numeric(model$results$fpca_lambdas[, 1]),
+    functional_mean_lambda = model$results$telemetry$mean_selected_lambda,
+    regularization_boundaries = regularization_boundaries,
     projection_max_abs_error = projection_error,
     component_diagnostics = diagnostics,
     execution_time = model$results$execution_time,

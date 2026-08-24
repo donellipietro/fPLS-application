@@ -11,8 +11,8 @@ brain_model_catalog <- function(include_fpcr = FALSE) {
   )
 }
 
-historical_lambda_grid <- function() {
-  10^seq(-3, -1, by = 0.2)
+standard_lambda_grid <- function() {
+  10^(-9:2)
 }
 
 generate_options <- function(test_suite, name_main_test, path_queue) {
@@ -55,27 +55,36 @@ generate_options <- function(test_suite, name_main_test, path_queue) {
     model = list(dimension = 3L, n_comp = n_comp, center = FALSE, discretization = "tetrahedral_fem"),
     data = list(
       source_path = cfg$PATH_APPLICATION_DATA,
-      centering = "overall_mean",
+      centering = "overall_gcv_smoothed_functional_mean",
       response = "CNTRLvsSCHZ_recoded",
       fit_all_subjects = !is_cv
     ),
     regularization = list(
-      calibration = if (is_cv && SMOKE_TEST) "fixed" else "gcv",
+      calibration = "gcv",
       fixed_direction_lambda = 1e-9,
       fixed_loading_lambda = 1e-9,
-      lambda_grid = historical_lambda_grid(),
+      lambda_grid = standard_lambda_grid(),
       gcv_seed = 0L,
       gcv_probes = if (SMOKE_TEST) 5L else 100L,
       max_iter = if (is_cv && SMOKE_TEST) 1L else 1000L,
       tolerance = 1e-8,
-      status = "historical_application_grid_inventory_pending_final_methods_decision"
+      fixed_lambda_status = "inactive_unless_calibration_is_fixed",
+      status = "standardized_simulation_wide_GCV_grid"
+    ),
+    mean_estimation = list(
+      method = "tetrahedral_P1_FEM_GCV_smoothed_functional_mean",
+      lambda_grid = standard_lambda_grid(),
+      gcv_seed = 0L,
+      gcv_probes = if (SMOKE_TEST) 5L else 100L,
+      scope = if (is_cv) "outer_training_subjects_only" else "all_subjects",
+      status = "standardized_simulation_wide_GCV_grid_including_historical_1e-2"
     ),
     provenance = list(
-      schema_version = 1L,
+      schema_version = 2L,
       template_commit = "167e8c2ec240e0f247a1853cbe61e9b7d7e3890a",
       reference_application_commit = "7fb91720b97661c8f83f675f8915ac96f7465912",
       simulation_reference_commit = "24ac4b95335db22c1d149dcaa627b89d96460819",
-      authoritative_centering = "overall_mean",
+      authoritative_centering = "overall_gcv_smoothed_functional_mean",
       historical_group_mean_overwrite = "not_ported_as_active_behavior",
       validation_status = if (is_cv) {
         if (SMOKE_TEST) {
@@ -85,7 +94,7 @@ generate_options <- function(test_suite, name_main_test, path_queue) {
         } else {
           "cross_validation_noncanonical"
         }
-      } else if (fit_native) "planned_not_production_validated" else "smoke_data_preparation_only",
+      } else if (fit_native) "complete_data_production" else "smoke_data_preparation_only",
       template_runtime_commit = "89ba803b85c76b40aab8af2037b779fd29677924"
     )
   )

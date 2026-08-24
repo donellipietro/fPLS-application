@@ -412,6 +412,7 @@ aggregate_cv_results <- function(evaluations, aggregate_dir, image_dir, cfg) {
   fold_metrics <- bind_cv_field(evaluations, "fold_metrics")
   predictions <- bind_cv_field(evaluations, "predictions")
   tuning <- bind_cv_field(evaluations, "svm_tuning")
+  regularization_boundaries <- bind_cv_field(evaluations, "regularization_boundaries")
   regularization <- do.call(rbind, lapply(evaluations, function(value) {
     data.frame(
       dimension_reducer = evaluation_reducer(value),
@@ -452,6 +453,11 @@ aggregate_cv_results <- function(evaluations, aggregate_dir, image_dir, cfg) {
   write.csv(fold_metrics, file.path(aggregate_dir, "cv_fold_metrics.csv"), row.names = FALSE)
   write.csv(predictions, file.path(aggregate_dir, "cv_predictions.csv"), row.names = FALSE)
   write.csv(tuning, file.path(aggregate_dir, "cv_svm_tuning.csv"), row.names = FALSE)
+  write.csv(
+    regularization_boundaries,
+    file.path(aggregate_dir, "cv_regularization_boundary_diagnostics.csv"),
+    row.names = FALSE
+  )
   write.csv(
     regularization[regularization$dimension_reducer == "R1-fPLS", c(
       "dimension_reducer", "repeat_index", "fold_index", "component",

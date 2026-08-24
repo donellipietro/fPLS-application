@@ -57,12 +57,22 @@ The response recoding is preserved from the historical workflow after relabeling
 - `CTRL`: `sqrt(p_SCHZ / p_CTRL)`
 - `SCHZ`: `-sqrt(p_CTRL / p_SCHZ)`
 
-The active centering family is the authoritative `overall_mean` family: the complete-data run
-uses the overall mean of all subjects, while each outer-CV fit estimates that same kind of mean
-from its training subjects only. The historical script's later overwrite to `group_means` is not
+The active centering family is the authoritative GCV-smoothed overall functional mean. The
+native driver first computes the nodewise empirical mean over its training rows, smooths that
+mean in the tetrahedral P1 finite-element space with the gradient penalty, and subtracts the
+fitted nodal mean from every predictor row. The complete-data run supplies all subjects; each
+outer-CV fit supplies outer-training subjects only and applies the resulting fitted mean to its
+held-out rows. The mean is selected by genuine GCV over the standardized simulation-wide grid
+`10^(-9:2)`, which includes the archived `1e-2` value. The grid, seed, probe count, EDF, GCV score, selected
+lambda, coefficients, and nodal fitted mean are exported. The historical script's later overwrite to `group_means` is not
 ported as active behavior.
 
-Every fit records MD5 checksums for the three input RDS files and the compiled native driver.
+R1-fPLS and fPCA use that same GCV grid. Smoke CV also
+uses GCV, with reduced probes and iteration limits; the fixed `1e-9` smoke shortcut is no longer
+active. Production evaluation rejects any functional-mean, fPLS, or fPCA selection at a grid
+boundary and exports the complete boundary diagnostic table.
+
+Every fit records the clean application commit, MD5 checksums for the three input RDS files and the compiled native driver.
 Cached prepared data and native fits are reused only when those checksums, the preprocessing
 implementation, the full fit configuration, the split, and the outer and core fdaPDE commits
 match.

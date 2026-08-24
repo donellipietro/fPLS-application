@@ -1,6 +1,6 @@
 # = ========================================================================== =
 # - Script: loading_stability.R
-# - Desc: Decision-boundary loading and beta FEM mass-norm comparisons.
+# - Desc: FEM mass-norm helpers and beta stability comparisons.
 # = ========================================================================== =
 
 tetrahedral_volumes <- function(points, elements) {
@@ -27,19 +27,6 @@ mass_crossprod <- function(left, right, elements, volumes) {
   value / 20
 }
 
-# Matches analysis/main_CNTRLvsSCHZ.R: Y loadings first, then e2,...,eH.
-historical_rotation <- function(y_loadings) {
-  h <- length(y_loadings)
-  basis <- matrix(0, nrow = h, ncol = h)
-  basis[, 1] <- y_loadings / sqrt(sum(y_loadings^2))
-  for (i in 2:h) {
-    value <- diag(h)[, i]
-    for (j in 1:(i - 1L)) value <- value - sum(basis[, j] * value) * basis[, j]
-    basis[, i] <- value / sqrt(sum(value^2))
-  }
-  basis
-}
-
 mass_stability <- function(reference, candidate, elements, volumes, sign_align = FALSE) {
   inner <- drop(mass_crossprod(candidate, reference, elements, volumes))
   sign <- if (sign_align && inner < 0) -1 else 1
@@ -53,32 +40,6 @@ mass_stability <- function(reference, candidate, elements, volumes, sign_align =
     mass_correlation = (sign * inner) / (candidate_norm * reference_norm),
     reference_mass_norm = reference_norm,
     candidate_mass_norm = candidate_norm
-  )
-}
-
-first_rotated_loading_stability <- function(x_loadings, y_loadings, points, elements, reference_h = 3L) {
-  elements <- matrix(as.integer(elements), ncol = 4L)
-  volumes <- tetrahedral_volumes(points, elements)
-  if (any(!is.finite(volumes)) || any(volumes <= 0)) stop("brain mesh has invalid tetrahedral volumes")
-  max_h <- ncol(x_loadings)
-  if (reference_h < 1L || reference_h > max_h || ncol(y_loadings) != max_h) {
-    stop("rotated loading stability requires matching X/Y loading prefixes")
-  }
-
-  first_rotated_loading <- function(h) {
-    rotation <- historical_rotation(as.numeric(y_loadings[1, seq_len(h)]))
-    x_loadings[, seq_len(h), drop = FALSE] %*% rotation[, 1]
-  }
-  reference <- first_rotated_loading(reference_h)
-  comparisons <- lapply(reference_h:max_h, function(h) {
-    cbind(retained_components = h, mass_stability(reference, first_rotated_loading(h), elements, volumes, sign_align = TRUE))
-  })
-
-  list(
-    summary = do.call(rbind, comparisons),
-    reference = reference,
-    first_rotation = historical_rotation(as.numeric(y_loadings[1, seq_len(reference_h)]))[, 1],
-    total_volume = sum(volumes)
   )
 }
 

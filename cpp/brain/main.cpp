@@ -41,6 +41,65 @@ struct explicit_edf_fpca_fit {
   const std::vector<bool> &monotone() const { return monotonicity; }
 };
 
+struct functional_mean_fit {
+  vector_t coefficients;
+  vector_t locations;
+  double selected_lambda;
+  std::vector<double> effective_degrees_of_freedom;
+  std::vector<double> gcv_scores;
+};
+
+functional_mean_fit fit_functional_mean_gcv(
+    const matrix_t &X, fdapde::internals::fe_ls_elliptic &smoother,
+    const std::vector<double> &lambda_grid, int gcv_probes, int gcv_seed) {
+  if (lambda_grid.empty() || gcv_probes < 1 ||
+      std::any_of(lambda_grid.begin(), lambda_grid.end(), [](double value) {
+        return !std::isfinite(value) || value <= 0;
+      })) {
+    throw std::runtime_error("invalid functional-mean GCV configuration");
+  }
+
+  const vector_t empirical_mean = X.colwise().mean().transpose();
+  smoother.update_response(empirical_mean);
+  functional_mean_fit result;
+  result.effective_degrees_of_freedom.reserve(lambda_grid.size());
+  result.gcv_scores.reserve(lambda_grid.size());
+
+  std::size_t selected = 0;
+  double best_gcv = std::numeric_limits<double>::infinity();
+  for (std::size_t index = 0; index < lambda_grid.size(); ++index) {
+    const double lambda = lambda_grid[index];
+    smoother.fit(lambda);
+    const double edf = smoother.edf(lambda, gcv_probes, gcv_seed);
+    const double residual_degrees_of_freedom =
+        static_cast<double>(X.cols()) - edf;
+    if (!std::isfinite(edf) || residual_degrees_of_freedom <= 0) {
+      throw std::runtime_error(
+          "functional-mean GCV has invalid residual degrees of freedom");
+    }
+    const double gcv =
+        (static_cast<double>(X.cols()) /
+         std::pow(residual_degrees_of_freedom, 2)) *
+        (smoother.fn() - empirical_mean).squaredNorm();
+    if (!std::isfinite(gcv))
+      throw std::runtime_error("functional-mean GCV score is non-finite");
+    result.effective_degrees_of_freedom.push_back(edf);
+    result.gcv_scores.push_back(gcv);
+    if (gcv < best_gcv) {
+      best_gcv = gcv;
+      selected = index;
+    }
+  }
+
+  result.selected_lambda = lambda_grid[selected];
+  smoother.fit(result.selected_lambda);
+  result.coefficients = smoother.f();
+  result.locations = smoother.fn();
+  if (!result.coefficients.allFinite() || !result.locations.allFinite())
+    throw std::runtime_error("functional-mean fit is non-finite");
+  return result;
+}
+
 explicit_edf_fpca_fit fit_fpca_explicit_edf(
     const matrix_t &X, fdapde::internals::fe_ls_elliptic &smoother, int n_comp,
     const std::vector<double> &lambda_grid, const std::string &calibration,
@@ -215,9 +274,13 @@ int run_application(const json &params) {
   const double tolerance = params.at("tolerance").get<double>();
   const int gcv_probes = params.at("gcv_probes").get<int>();
   const int gcv_seed = params.at("gcv_seed").get<int>();
+  const int mean_gcv_probes = params.at("mean_gcv_probes").get<int>();
+  const int mean_gcv_seed = params.at("mean_gcv_seed").get<int>();
   const std::string calibration = params.at("calibration").get<std::string>();
   const std::vector<double> lambda_grid =
       params.at("lambda_grid").get<std::vector<double>>();
+  const std::vector<double> mean_lambda_grid =
+      params.at("mean_lambda_grid").get<std::vector<double>>();
   const double fixed_direction_lambda =
       params.at("fixed_direction_lambda").get<double>();
   const double fixed_loading_lambda =
@@ -233,14 +296,16 @@ int run_application(const json &params) {
   }
 
   if (params.at("center").get<bool>()) {
-    throw std::runtime_error("R-side overall centering is required; native "
-                             "centering must stay false");
+    throw std::runtime_error(
+        "model-internal centering must stay false; the native preprocessing "
+        "stage applies the GCV-smoothed functional mean explicitly");
   }
-  if (n_comp < 1 || max_iter < 1 || tolerance <= 0 || gcv_probes < 1) {
+  if (n_comp < 1 || max_iter < 1 || tolerance <= 0 || gcv_probes < 1 ||
+      mean_gcv_probes < 1) {
     throw std::runtime_error("invalid fPLS configuration");
   }
 
-  const matrix_t X = read_matrix(params.at("X_file").get<std::string>());
+  const matrix_t X_raw = read_matrix(params.at("X_file").get<std::string>());
   const matrix_t Y = read_matrix(params.at("Y_file").get<std::string>());
   const matrix_t nodes =
       read_matrix(params.at("nodes_file").get<std::string>());
@@ -248,13 +313,13 @@ int run_application(const json &params) {
       read_matrix(params.at("elements_file").get<std::string>());
   const matrix_t boundary_source =
       read_matrix(params.at("boundary_file").get<std::string>());
-  std::cout << "- Loaded brain data: " << X.rows() << " subjects, " << X.cols()
-            << " mesh nodes" << std::endl;
+  std::cout << "- Loaded brain data: " << X_raw.rows() << " subjects, "
+            << X_raw.cols() << " mesh nodes" << std::endl;
   if (nodes.cols() != 3 || elements_source.cols() != 4 ||
       boundary_source.cols() != 1) {
     throw std::runtime_error("invalid 3D mesh input dimensions");
   }
-  if (X.rows() != Y.rows() || X.cols() != nodes.rows()) {
+  if (X_raw.rows() != Y.rows() || X_raw.cols() != nodes.rows()) {
     throw std::runtime_error("X, Y, and mesh-node dimensions do not agree");
   }
 
@@ -274,7 +339,40 @@ int run_application(const json &params) {
   GeoFrame data(domain);
   auto &layer =
       data.template insert_scalar_layer<POINT>("observations", MESH_NODES);
+
+  const auto centering_start = std::chrono::steady_clock::now();
+  auto mean_penalty = fe_ls_elliptic(penalty, load);
+  fdapde::internals::fe_ls_elliptic mean_smoother;
+  mean_smoother.discretize(mean_penalty.get());
+  mean_smoother.analyze_data(
+      data, vector_t::Ones(data[0].rows()).asDiagonal());
+  std::cout << "- Fitting training-only functional mean by GCV over "
+            << mean_lambda_grid.size() << " candidate lambda(s)" << std::endl;
+  const functional_mean_fit mean_fit = fit_functional_mean_gcv(
+      X_raw, mean_smoother, mean_lambda_grid, mean_gcv_probes, mean_gcv_seed);
+  const matrix_t X = X_raw.rowwise() - mean_fit.locations.transpose();
+  if (!X.allFinite())
+    throw std::runtime_error("functional-mean centered data are non-finite");
   layer.load_blk("X", X.transpose());
+  const auto centering_end = std::chrono::steady_clock::now();
+  std::cout << "- Functional mean completed: lambda="
+            << mean_fit.selected_lambda << std::endl;
+
+  std::filesystem::create_directories(output_dir);
+  write_csv(output_file(output_dir, "functional_mean_coefficients.csv"),
+            mean_fit.coefficients);
+  write_csv(output_file(output_dir, "functional_mean_locations.csv"),
+            mean_fit.locations);
+  matrix_t mean_gcv_diagnostics(mean_lambda_grid.size(), 3);
+  for (std::size_t index = 0; index < mean_lambda_grid.size(); ++index) {
+    mean_gcv_diagnostics(index, 0) = mean_lambda_grid[index];
+    mean_gcv_diagnostics(index, 1) =
+        mean_fit.effective_degrees_of_freedom[index];
+    mean_gcv_diagnostics(index, 2) = mean_fit.gcv_scores[index];
+  }
+  write_csv(output_file(output_dir, "functional_mean_gcv.csv"),
+            mean_gcv_diagnostics,
+            std::vector<std::string>{"lambda", "edf", "gcv"});
 
   if (model_name == "R1_fPLS") {
     auto direction_penalty = fe_ls_elliptic(penalty, load);
@@ -310,7 +408,6 @@ int run_application(const json &params) {
     }
     const auto fit_end = std::chrono::steady_clock::now();
 
-    std::filesystem::create_directories(output_dir);
     write_csv(output_file(output_dir, "x_space_directions_coefficients.csv"),
               model.X_space_directions());
     write_csv(output_file(output_dir, "y_space_directions.csv"),
@@ -387,11 +484,24 @@ int run_application(const json &params) {
       monotone.push_back(value ? 1 : 0);
 
     json telemetry_json;
-    telemetry_json["schema_version"] = 1;
+    telemetry_json["schema_version"] = 2;
     telemetry_json["model"] = "R1_fPLS";
     telemetry_json["mode"] = "native_fdaPDE_cpp";
     telemetry_json["discretization"] = "tetrahedral_fem";
     telemetry_json["center"] = false;
+    telemetry_json["centering"] =
+        "training_overall_gcv_smoothed_functional_mean";
+    telemetry_json["mean_lambda_grid"] = mean_lambda_grid;
+    telemetry_json["mean_gcv_probes"] = mean_gcv_probes;
+    telemetry_json["mean_gcv_seed"] = mean_gcv_seed;
+    telemetry_json["mean_selected_lambda"] = mean_fit.selected_lambda;
+    telemetry_json["mean_effective_degrees_of_freedom"] =
+        mean_fit.effective_degrees_of_freedom;
+    telemetry_json["mean_gcv_scores"] = mean_fit.gcv_scores;
+    telemetry_json["mean_formula"] =
+        "argmin_lambda m/(m-edf_lambda)^2*||S_lambda*colMeans(X_train)-"
+        "colMeans(X_train)||_2^2";
+    telemetry_json["mean_scope"] = "native_fit_training_rows_only";
     telemetry_json["calibration"] = calibration;
     telemetry_json["fit_includes_gcv"] = calibration == "gcv";
     telemetry_json["write_reconstructions"] = write_reconstructions;
@@ -409,6 +519,8 @@ int run_application(const json &params) {
     telemetry_json["fixed_direction_lambda"] = fixed_direction_lambda;
     telemetry_json["fixed_loading_lambda"] = fixed_loading_lambda;
     telemetry_json["setup_seconds"] = setup_seconds;
+    telemetry_json["centering_seconds"] =
+        std::chrono::duration<double>(centering_end - centering_start).count();
     telemetry_json["fit_seconds"] = fit_seconds;
     telemetry_json["output_seconds"] = output_seconds;
     telemetry_json["wall_seconds"] = wall_seconds;
@@ -499,7 +611,6 @@ int run_application(const json &params) {
     throw std::runtime_error("non-finite fPCR score projection");
   }
 
-  std::filesystem::create_directories(output_dir);
   write_csv(output_file(output_dir, "x_space_directions_coefficients.csv"),
             directions);
   write_csv(output_file(output_dir, "x_latent_scores.csv"), scores);
@@ -618,7 +729,7 @@ int run_application(const json &params) {
     monotone.push_back(value ? 1 : 0);
 
   json telemetry_json;
-  telemetry_json["schema_version"] = 2;
+  telemetry_json["schema_version"] = 3;
   telemetry_json["model"] = "fPCR";
   telemetry_json["mode"] = "native_fdaPDE_cpp";
   telemetry_json["discretization"] = "tetrahedral_fem";
@@ -634,6 +745,19 @@ int run_application(const json &params) {
            {"seed_mode", "explicit_deterministic"},
            {"cache", "per_lambda_shared_across_components"}};
   telemetry_json["center"] = false;
+  telemetry_json["centering"] =
+      "training_overall_gcv_smoothed_functional_mean";
+  telemetry_json["mean_lambda_grid"] = mean_lambda_grid;
+  telemetry_json["mean_gcv_probes"] = mean_gcv_probes;
+  telemetry_json["mean_gcv_seed"] = mean_gcv_seed;
+  telemetry_json["mean_selected_lambda"] = mean_fit.selected_lambda;
+  telemetry_json["mean_effective_degrees_of_freedom"] =
+      mean_fit.effective_degrees_of_freedom;
+  telemetry_json["mean_gcv_scores"] = mean_fit.gcv_scores;
+  telemetry_json["mean_formula"] =
+      "argmin_lambda m/(m-edf_lambda)^2*||S_lambda*colMeans(X_train)-"
+      "colMeans(X_train)||_2^2";
+  telemetry_json["mean_scope"] = "native_fit_training_rows_only";
   telemetry_json["calibration"] = calibration;
   telemetry_json["fit_includes_gcv"] = calibration == "gcv";
   telemetry_json["write_reconstructions"] = write_reconstructions;
@@ -664,6 +788,8 @@ int run_application(const json &params) {
   telemetry_json["regression"] =
       "training_only_OLS_refit_for_each_component_prefix";
   telemetry_json["setup_seconds"] = setup_seconds;
+  telemetry_json["centering_seconds"] =
+      std::chrono::duration<double>(centering_end - centering_start).count();
   telemetry_json["fit_seconds"] = fit_seconds;
   telemetry_json["output_seconds"] = output_seconds;
   telemetry_json["wall_seconds"] = wall_seconds;

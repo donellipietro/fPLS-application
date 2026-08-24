@@ -36,7 +36,10 @@ fi
 
 cd "${PATH_REPO}"
 Rscript src/init.R "${TEST_SUITE}" "${TEST_NAME}"
-mapfile -t RESOLVED_TEST_NAMES < <(Rscript src/resolve_test_names.R "${TEST_SUITE}" "${TEST_NAME}")
+RESOLVED_TEST_NAMES=()
+while IFS= read -r name; do
+  RESOLVED_TEST_NAMES+=("${name}")
+done < <(Rscript src/resolve_test_names.R "${TEST_SUITE}" "${TEST_NAME}")
 
 qsub_job() {
   local script="$1"
@@ -64,7 +67,10 @@ fi
 for TEST_INDEX in "${!RESOLVED_TEST_NAMES[@]}"; do
   RESOLVED_TEST_NAME="${RESOLVED_TEST_NAMES[TEST_INDEX]}"
   QUEUE_DIR="${PATH_QUEUE}/${TEST_SUITE}/${RESOLVED_TEST_NAME}"
-  mapfile -t OPTIONS < <(find "${QUEUE_DIR}" -maxdepth 1 -type f -name '*.json' -exec basename {} \; | sort)
+  OPTIONS=()
+  while IFS= read -r option; do
+    OPTIONS+=("${option}")
+  done < <(find "${QUEUE_DIR}" -maxdepth 1 -type f -name '*.json' -exec basename {} \; | sort)
   if [[ "${#OPTIONS[@]}" -eq 0 ]]; then
     echo "Error: no JSON option files found in ${QUEUE_DIR}" >&2
     exit 1

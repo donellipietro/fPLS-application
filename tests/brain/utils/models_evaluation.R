@@ -1,4 +1,48 @@
 # = ========================================================================== =
+
+regularization_boundary_diagnostics <- function(model, test_options) {
+  rows <- function(quantity, values, grid) {
+    values <- as.numeric(values)
+    grid <- as.numeric(grid)
+    tolerance <- sqrt(.Machine$double.eps)
+    data.frame(
+      quantity = quantity,
+      component = seq_along(values),
+      selected_lambda = values,
+      grid_min = min(grid),
+      grid_max = max(grid),
+      selected_at_lower_boundary = abs(values - min(grid)) <= tolerance * abs(min(grid)),
+      selected_at_upper_boundary = abs(values - max(grid)) <= tolerance * abs(max(grid))
+    )
+  }
+
+  model_rows <- if (identical(model$MODE, "fPCR")) {
+    rows("fPCA loading", model$results$fpca_lambdas[, 1], test_options$regularization$lambda_grid)
+  } else {
+    rbind(
+      rows("fPLS direction", model$results$direction_lambdas[, 1], test_options$regularization$lambda_grid),
+      rows("fPLS loading", model$results$loading_lambdas[, 1], test_options$regularization$lambda_grid)
+    )
+  }
+  rbind(
+    rows(
+      "functional mean",
+      model$results$telemetry$mean_selected_lambda,
+      test_options$mean_estimation$lambda_grid
+    ),
+    model_rows
+  )
+}
+
+assert_production_grid_interior <- function(diagnostics, validation_status) {
+  production <- validation_status %in% c("complete_data_production", "cross_validation_production")
+  boundary <- diagnostics$selected_at_lower_boundary | diagnostics$selected_at_upper_boundary
+  if (production && any(boundary)) {
+    hits <- diagnostics[boundary, c("quantity", "component", "selected_lambda", "grid_min", "grid_max")]
+    stop("production GCV selected a grid boundary:\n", paste(capture.output(print(hits, row.names = FALSE)), collapse = "\n"))
+  }
+  invisible(diagnostics)
+}
 # - Script: models_evaluation.R
 # - Desc: Application separation diagnostics for sequential component prefixes.
 # = ========================================================================== =
@@ -48,6 +92,8 @@ evaluate_results <- function(model, data, test_options) {
   }
 
   n_comp <- test_options$model$n_comp
+  regularization_boundaries <- regularization_boundary_diagnostics(model, test_options)
+  assert_production_grid_interior(regularization_boundaries, test_options$provenance$validation_status)
   separation <- do.call(rbind, lapply(seq_len(n_comp), function(h) {
     oriented <- orient_ctrl_scores(data$labels, as.numeric(model$results$Y_hat[[h]]))
     scores <- oriented$scores
@@ -77,6 +123,7 @@ evaluate_results <- function(model, data, test_options) {
     finite_solution = model$results$finite_solution,
     direction_lambda = model$results$direction_lambdas[, 1],
     loading_lambda = model$results$loading_lambdas[, 1],
+    regularization_boundaries = regularization_boundaries,
     provenance = model$results$provenance,
     validation_status = test_options$provenance$validation_status
   )

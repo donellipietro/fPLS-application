@@ -1,6 +1,6 @@
 # = ========================================================================== =
 # - Script: data_prep.R
-# - Desc: Loads local brain inputs and applies authoritative overall centering.
+# - Desc: Loads raw brain inputs; native fits estimate the functional mean.
 # = ========================================================================== =
 
 required_brain_files <- function(data_dir) {
@@ -73,22 +73,17 @@ load_brain_application_data <- function(data_dir, input_md5 = brain_input_md5(da
     stop(glue::glue("X has {ncol(X)} columns but mesh has {nrow(nodes)} nodes"))
   }
 
-  overall_mean <- colMeans(X)
-  X_centered <- sweep(X, 2L, overall_mean, check.margin = FALSE)
-
   list(
     X = X,
-    X_centered = X_centered,
     Y = response$y,
     labels = response$labels,
     counts = response$counts,
     nodes = nodes,
     elements = elements,
     boundary = boundary,
-    overall_mean = overall_mean,
     input_md5 = input_md5,
     preprocessing_md5 = brain_preprocessing_md5(),
-    centering = "overall_mean",
+    centering = "overall_gcv_smoothed_functional_mean",
     dimensions = list(
       n_subjects = nrow(X),
       n_nodes = ncol(X),
@@ -118,20 +113,17 @@ prepare_brain_cv_split <- function(data, n_folds, repeat_index, fold_index, seed
   test_indices <- which(fold_ids == as.integer(fold_index))
   train_indices <- which(fold_ids != as.integer(fold_index))
   train_response <- recoded_response(data$labels[train_indices])
-  train_mean <- colMeans(data$X[train_indices, , drop = FALSE])
-
   list(
-    X_centered = sweep(data$X[train_indices, , drop = FALSE], 2L, train_mean, check.margin = FALSE),
+    X = data$X[train_indices, , drop = FALSE],
     Y = train_response$y,
     labels = train_response$labels,
     counts = train_response$counts,
     nodes = data$nodes,
     elements = data$elements,
     boundary = data$boundary,
-    overall_mean = train_mean,
     input_md5 = data$input_md5,
     preprocessing_md5 = data$preprocessing_md5,
-    centering = "training_overall_mean",
+    centering = "training_overall_gcv_smoothed_functional_mean",
     dimensions = list(
       n_subjects = length(train_indices),
       n_nodes = ncol(data$X),
@@ -144,7 +136,7 @@ prepare_brain_cv_split <- function(data, n_folds, repeat_index, fold_index, seed
       seed = as.integer(seed),
       train_indices = train_indices,
       test_indices = test_indices,
-      test_X_centered = sweep(data$X[test_indices, , drop = FALSE], 2L, train_mean, check.margin = FALSE),
+      test_X = data$X[test_indices, , drop = FALSE],
       test_labels = factor(as.character(data$labels[test_indices]), levels = c("CTRL", "SCHZ")),
       test_counts = table(factor(as.character(data$labels[test_indices]), levels = c("CTRL", "SCHZ")))
     )
@@ -154,19 +146,17 @@ prepare_brain_cv_split <- function(data, n_folds, repeat_index, fold_index, seed
 write_brain_native_inputs <- function(data, raw_dir) {
   dir.create(raw_dir, recursive = TRUE, showWarnings = FALSE)
   files <- list(
-    X = file.path(raw_dir, "X_centered.csv"),
+    X = file.path(raw_dir, "X_raw.csv"),
     Y = file.path(raw_dir, "Y.csv"),
     nodes = file.path(raw_dir, "points.csv"),
     elements = file.path(raw_dir, "elements.csv"),
-    boundary = file.path(raw_dir, "boundary.csv"),
-    mean = file.path(raw_dir, "overall_mean.csv")
+    boundary = file.path(raw_dir, "boundary.csv")
   )
 
-  write.csv(data$X_centered, files$X, row.names = FALSE)
+  write.csv(data$X, files$X, row.names = FALSE)
   write.csv(data$Y, files$Y, row.names = FALSE)
   write.csv(data$nodes, files$nodes, row.names = FALSE)
   write.csv(data$elements, files$elements, row.names = FALSE)
   write.csv(data$boundary, files$boundary, row.names = FALSE)
-  write.csv(matrix(data$overall_mean, nrow = 1L), files$mean, row.names = FALSE)
   files
 }

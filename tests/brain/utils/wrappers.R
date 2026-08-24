@@ -15,6 +15,18 @@ git_commit <- function(path) {
   trimws(output[1])
 }
 
+git_is_clean <- function(path) {
+  output <- system2(
+    "git",
+    c("-C", shQuote(normalizePath(path)), "status", "--porcelain"),
+    stdout = TRUE,
+    stderr = TRUE
+  )
+  status <- attr(output, "status")
+  if (!is.null(status) && status != 0L) stop(glue::glue("cannot inspect git state at {path}"))
+  length(output) == 0L
+}
+
 read_cpp_matrix <- function(file) {
   value <- as.matrix(suppressWarnings(read.csv(file, check.names = FALSE)))
   storage.mode(value) <- "double"
@@ -59,6 +71,13 @@ fit_native_model <- function(model_name, data, path_list, test_options) {
   binary <- file.path(path_list$cpp_script, "fit_model")
   if (!file.exists(binary)) stop("native fit binary is missing")
   binary_md5 <- unname(as.character(tools::md5sum(binary)))
+  application_commit <- git_commit(path_list$repo)
+  application_worktree_clean <- git_is_clean(path_list$repo)
+  if (test_options$provenance$validation_status %in% c(
+    "complete_data_production", "cross_validation_production"
+  ) && !application_worktree_clean) {
+    stop("production application fits require a clean committed worktree")
+  }
 
   outer_commit <- git_commit(cfg$PATH_FDAPDE_CPP)
   core_commit <- git_commit(file.path(cfg$PATH_FDAPDE_CPP, "fdaPDE", "core"))
@@ -73,6 +92,8 @@ fit_native_model <- function(model_name, data, path_list, test_options) {
       outer_commit = outer_commit,
       core_commit = core_commit,
       native_binary_md5 = binary_md5,
+      application_commit = application_commit,
+      application_worktree_clean = application_worktree_clean,
       data_path = test_options$data$source_path,
       centering = data$centering,
       input_md5 = as.list(data$input_md5),
@@ -80,7 +101,8 @@ fit_native_model <- function(model_name, data, path_list, test_options) {
       fit_configuration = test_options$regularization[c(
         "calibration", "fixed_direction_lambda", "fixed_loading_lambda",
         "lambda_grid", "gcv_seed", "gcv_probes", "max_iter", "tolerance"
-      )]
+      )],
+      mean_estimation_configuration = test_options$mean_estimation
     ),
     if (isTRUE(test_options$cross_validation$enabled)) list(
       cross_validation_split = test_options$cross_validation[c(
@@ -101,6 +123,9 @@ fit_native_model <- function(model_name, data, path_list, test_options) {
     lambda_grid = test_options$regularization$lambda_grid,
     gcv_seed = test_options$regularization$gcv_seed,
     gcv_probes = test_options$regularization$gcv_probes,
+    mean_lambda_grid = unname(as.list(test_options$mean_estimation$lambda_grid)),
+    mean_gcv_seed = test_options$mean_estimation$gcv_seed,
+    mean_gcv_probes = test_options$mean_estimation$gcv_probes,
     max_iter = test_options$regularization$max_iter,
     tolerance = test_options$regularization$tolerance,
     X_file = input_files$X,
@@ -131,8 +156,8 @@ fit_native_model <- function(model_name, data, path_list, test_options) {
 
   telemetry <- fromJSON(telemetry_file, simplifyVector = TRUE)
   n_comp <- test_options$model$n_comp
-  n_units <- nrow(data$X_centered)
-  n_nodes <- ncol(data$X_centered)
+  n_units <- nrow(data$X)
+  n_nodes <- ncol(data$X)
   n_responses <- ncol(data$Y)
   component_diagnostics <- suppressWarnings(read.csv(
     file.path(raw_dir, "component_diagnostics.csv"),
@@ -140,6 +165,16 @@ fit_native_model <- function(model_name, data, path_list, test_options) {
   ))
 
   raw <- list(
+    functional_mean_coefficients = read_cpp_matrix(
+      file.path(raw_dir, "functional_mean_coefficients.csv")
+    ),
+    functional_mean_locations = read_cpp_matrix(
+      file.path(raw_dir, "functional_mean_locations.csv")
+    ),
+    functional_mean_gcv = suppressWarnings(read.csv(
+      file.path(raw_dir, "functional_mean_gcv.csv"),
+      check.names = FALSE
+    )),
     X_space_directions = read_cpp_matrix(file.path(raw_dir, "x_space_directions_coefficients.csv")),
     Y_space_directions = read_cpp_matrix(file.path(raw_dir, "y_space_directions.csv")),
     X_latent_scores = read_cpp_matrix(file.path(raw_dir, "x_latent_scores.csv")),
@@ -164,6 +199,8 @@ fit_native_model <- function(model_name, data, path_list, test_options) {
     })
   )
   check_matrix_shape(raw$X_space_directions, n_nodes, n_comp, "X directions")
+  check_matrix_shape(raw$functional_mean_coefficients, telemetry$n_basis, 1L, "functional mean coefficients")
+  check_matrix_shape(raw$functional_mean_locations, n_nodes, 1L, "functional mean at mesh nodes")
   check_matrix_shape(raw$Y_space_directions, n_responses, n_comp, "Y directions")
   check_matrix_shape(raw$X_latent_scores, n_units, n_comp, "X scores")
   check_matrix_shape(raw$Y_latent_scores, n_units, n_comp, "Y scores")
@@ -202,6 +239,7 @@ fit_native_model <- function(model_name, data, path_list, test_options) {
         execution_time = telemetry$wall_seconds,
         peak_ram_mib = run_stats$peak_ram_mib,
         setup_seconds = telemetry$setup_seconds,
+        centering_seconds = telemetry$centering_seconds,
         fit_seconds = telemetry$fit_seconds,
         output_seconds = telemetry$output_seconds,
         n_basis = telemetry$n_basis,

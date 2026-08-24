@@ -2,12 +2,12 @@
 
 This repository ports the fPLS resting-state fMRI connectivity application to the current native fdaPDE C++ implementation. It is scoped to the reviewer-facing application analysis, not to the historical simulation suites.
 
-The application compares control and schizophrenia groups using imputed brain connectivity maps on a volumetric tetrahedral mesh. The response is the historical CNTRL-vs-SCHZ binary contrast recoded with prevalence weights, and the functional predictor maps are centered by the authoritative overall functional mean. The historical script's accidental overwrite from `overall_mean` to `group_means` is not preserved as active behavior.
+The application compares control and schizophrenia groups using imputed brain connectivity maps on a volumetric tetrahedral mesh. The response is the historical CNTRL-vs-SCHZ binary contrast recoded with prevalence weights. The empirical overall predictor mean is smoothed on the tetrahedral P1 finite-element space and calibrated by GCV before centering. The complete-data fit uses all subjects for that mean; every outer-CV fit estimates it from its training subjects only. The historical script's accidental overwrite from `overall_mean` to `group_means` is not preserved as active behavior.
 
 ## Analysis Scope
 
-- Fit native R1-fPLS and an fdaPDE-smoother-based fPCR comparator on the same 3D brain mesh, centered data, component prefixes, and regularization grid. The application controls fPCA GCV probe count and seed explicitly.
-- Inventory the historical application GCV grid, `10^seq(-3, -1, by = 0.2)`, in configuration.
+- Fit native R1-fPLS and an fdaPDE-smoother-based fPCR comparator on the same 3D brain mesh, functionally centered data, component prefixes, and regularization grid. The application controls functional-mean, fPLS, and fPCA GCV probe counts and seeds explicitly.
+- Use the standardized simulation-wide GCV grid `10^(-9:2)` for the functional mean, fPLS, and fPCA; it includes the historical mean value `1e-2`. Production evaluation fails if any selected lambda is at either grid boundary.
 - Fit a single sequential `H = 6` model and report prefix-wise separation diagnostics for `H = 3:6`; `H = 3` remains the exploratory setting to be verified as the first prefix with perfect in-sample separation.
 - Use fPLS for dimension reduction, then estimate the maximum-margin linear boundary in each standardized score prefix `H = 3:6`. This is an in-sample exploratory boundary, not a cross-validated diagnostic classifier.
 - Map each score-space boundary to both its reconstructed connectivity pattern and its exact functional classifier coefficient, then compare both maps with their `H = 3` references using tetrahedral FEM mass correlations.
@@ -43,7 +43,7 @@ Compile the native 3D driver:
 make compile MODEL=brain TARGET=fit_model
 ```
 
-Run the non-expensive application smoke check, which prepares and records the authoritative centered data but skips the native fit:
+Run the non-expensive application smoke check, which validates and records raw input preparation but skips the native functional-mean and model fits:
 
 ```sh
 SMOKE_TEST=1 make run_test TEST_SUITE=brain TEST_NAME=smoke_overall_mean
@@ -100,7 +100,7 @@ outer-training fold; it is not nested CV of the entire supervised fPLS pipeline.
 fold remains untouched, so reported out-of-fold performance still evaluates the fitted pipeline,
 but this conditional tuning should not be presented as an unbiased inner estimate.
 
-Run the two-fold, one-component plumbing check locally (four native reducer fits):
+Run the two-fold, one-component plumbing check locally (four native reducer fits). It uses reduced probe counts and iteration limits but still exercises GCV; it does not fix lambda to `1e-9`:
 
 ```sh
 SMOKE_TEST=1 make run_test TEST_SUITE=brain TEST_NAME=out_of_sample
@@ -120,7 +120,7 @@ production completion.
 
 ## Torque Cluster
 
-The `hpc-torque` profile is aligned with canonical testbench runtime commit
+The `hpc-torque` profile is the Kami runtime and is aligned with canonical testbench runtime commit
 `89ba803b85c76b40aab8af2037b779fd29677924`. It submits compilation, distributes option
 files across PBS workers, exports the configured environment, and schedules aggregation
 with an `afterok` dependency. Each fPLS/fPCR fit is single-threaded; independent outer folds run
@@ -130,7 +130,16 @@ in parallel. The managed cluster clone is pinned to outer commit
 
 ```sh
 PATH_APPLICATION_DATA=/cluster/path/to/brain-data make build PROFILE=hpc-torque
+make run_test TEST_SUITE=brain TEST_NAME=h_stability
+# After h_stability aggregation completes successfully:
 make run_test TEST_SUITE=brain TEST_NAME=out_of_sample
+```
+
+Production fits require a clean committed application worktree. Preview the compile, queue partitioning, PBS resources, and dependent aggregation jobs without submission:
+
+```sh
+PBS_COMPILE_DRY_RUN=1 PBS_DRY_RUN=1 make run_test TEST_SUITE=brain TEST_NAME=h_stability
+PBS_COMPILE_DRY_RUN=1 PBS_DRY_RUN=1 make run_test TEST_SUITE=brain TEST_NAME=out_of_sample
 ```
 
 The application defaults to at most 15 workers, one CPU and 16 GB per worker, with a
