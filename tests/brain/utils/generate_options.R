@@ -12,7 +12,7 @@ brain_model_catalog <- function(include_fpcr = FALSE) {
 }
 
 standard_lambda_grid <- function() {
-  10^(-12:2)
+  10^(-15:2)
 }
 
 generate_options <- function(test_suite, name_main_test, path_queue) {
@@ -69,7 +69,7 @@ generate_options <- function(test_suite, name_main_test, path_queue) {
       max_iter = if (is_cv && SMOKE_TEST) 1L else 1000L,
       tolerance = 1e-8,
       fixed_lambda_status = "inactive_unless_calibration_is_fixed",
-      status = "application_expanded_GCV_grid_after_H6_loading2_hit_1e-9"
+      status = "application_expanded_GCV_grid_after_H6_loading2_hit_1e-12"
     ),
     mean_estimation = list(
       method = "tetrahedral_P1_FEM_GCV_smoothed_functional_mean",

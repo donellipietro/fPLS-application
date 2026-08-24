@@ -126,6 +126,12 @@ regularization_boundaries <- do.call(rbind, lapply(names(all_evaluations), funct
   )
 }))
 
+fpls_loading_gcv <- do.call(rbind, lapply(names(all_evaluations), function(name) {
+  value <- all_evaluations[[name]]
+  if (is.null(value$fpls_loading_gcv)) return(NULL)
+  cbind(scenario = value$scenario, value$fpls_loading_gcv)
+}))
+
 if (requested == "out_of_sample") {
   missing_evaluations <- setdiff(expected_evaluations, names(all_evaluations))
   if (length(missing_evaluations) > 0L) {
@@ -287,6 +293,13 @@ if (!is.null(regularization_boundaries)) {
   write.csv(
     regularization_boundaries,
     file.path(aggregate_dir, "regularization_boundary_diagnostics.csv"),
+    row.names = FALSE
+  )
+}
+if (!is.null(fpls_loading_gcv)) {
+  write.csv(
+    fpls_loading_gcv,
+    file.path(aggregate_dir, "fpls_loading_gcv.csv"),
     row.names = FALSE
   )
 }

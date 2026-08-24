@@ -100,6 +100,54 @@ functional_mean_fit fit_functional_mean_gcv(
   return result;
 }
 
+template <typename Model>
+matrix_t fpls_loading_gcv_diagnostics(
+    const matrix_t &X, const Model &model,
+    fdapde::internals::fe_ls_elliptic &smoother,
+    const std::vector<double> &lambda_grid, const matrix_t &selected_lambdas,
+    int gcv_probes, int gcv_seed) {
+  const int n_comp = model.X_latent_scores().cols();
+  matrix_t diagnostics(n_comp * lambda_grid.size(), 5);
+  matrix_t residual = X;
+  for (int h = 0; h < n_comp; ++h) {
+    const vector_t score = model.X_latent_scores().col(h);
+    const double score_norm = score.squaredNorm();
+    if (!std::isfinite(score_norm) || score_norm <= 0)
+      throw std::runtime_error("invalid fPLS score in loading GCV replay");
+    const vector_t response = residual.transpose() * score / score_norm;
+    smoother.update_response(response);
+
+    std::size_t selected = 0;
+    double best_gcv = std::numeric_limits<double>::infinity();
+    for (std::size_t index = 0; index < lambda_grid.size(); ++index) {
+      const double lambda = lambda_grid[index];
+      smoother.fit(lambda);
+      const double edf = smoother.edf(lambda, gcv_probes, gcv_seed);
+      const double residual_degrees_of_freedom = X.cols() - edf;
+      if (!std::isfinite(edf) || residual_degrees_of_freedom <= 0)
+        throw std::runtime_error("invalid fPLS loading GCV replay EDF");
+      const double gcv =
+          (X.cols() / std::pow(residual_degrees_of_freedom, 2)) *
+          (smoother.fn() - response).squaredNorm();
+      if (!std::isfinite(gcv))
+        throw std::runtime_error("non-finite fPLS loading GCV replay score");
+      const Eigen::Index row = h * lambda_grid.size() + index;
+      diagnostics.row(row) << h + 1, lambda, edf, gcv, 0;
+      if (gcv < best_gcv) {
+        best_gcv = gcv;
+        selected = index;
+      }
+    }
+    diagnostics(h * lambda_grid.size() + selected, 4) = 1;
+    if (lambda_grid[selected] != selected_lambdas(h, 0))
+      throw std::runtime_error(
+          "fPLS loading GCV replay does not match the fitted model");
+    residual.noalias() -=
+        score * (smoother.Psi() * model.X_loadings().col(h)).transpose();
+  }
+  return diagnostics;
+}
+
 explicit_edf_fpca_fit fit_fpca_explicit_edf(
     const matrix_t &X, fdapde::internals::fe_ls_elliptic &smoother, int n_comp,
     const std::vector<double> &lambda_grid, const std::string &calibration,
@@ -383,6 +431,7 @@ int run_application(const json &params) {
 
     matrix_t direction_lambdas;
     matrix_t loading_lambdas;
+    matrix_t loading_gcv_diagnostics;
     std::cout << "Starting fPLS fit: H=" << n_comp
               << ", calibration=" << calibration;
     if (calibration == "gcv")
@@ -395,6 +444,14 @@ int run_application(const json &params) {
                 tolerance, gcv_probes, gcv_seed);
       direction_lambdas = model.direction_lambda();
       loading_lambdas = model.loading_lambda();
+      auto diagnostic_penalty = fe_ls_elliptic(penalty, load);
+      fdapde::internals::fe_ls_elliptic diagnostic_smoother;
+      diagnostic_smoother.discretize(diagnostic_penalty.get());
+      diagnostic_smoother.analyze_data(
+          data, vector_t::Ones(data[0].rows()).asDiagonal());
+      loading_gcv_diagnostics = fpls_loading_gcv_diagnostics(
+          X, model, diagnostic_smoother, lambda_grid, loading_lambdas,
+          gcv_probes, gcv_seed);
     } else if (calibration == "fixed") {
       Eigen::Matrix<double, 1, 1> direction_lambda;
       Eigen::Matrix<double, 1, 1> loading_lambda;
@@ -422,6 +479,12 @@ int run_application(const json &params) {
     write_csv(output_file(output_dir, "direction_lambdas.csv"),
               direction_lambdas);
     write_csv(output_file(output_dir, "loading_lambdas.csv"), loading_lambdas);
+    if (calibration == "gcv") {
+      write_csv(output_file(output_dir, "fpls_loading_gcv.csv"),
+                loading_gcv_diagnostics,
+                std::vector<std::string>{"component", "lambda", "edf", "gcv",
+                                         "selected"});
+    }
     matrix_t component_diagnostics(n_comp, 6);
     for (int h = 0; h < n_comp; ++h) {
       const auto &history = model.direction_objective_history()[h];
@@ -484,7 +547,7 @@ int run_application(const json &params) {
       monotone.push_back(value ? 1 : 0);
 
     json telemetry_json;
-    telemetry_json["schema_version"] = 2;
+    telemetry_json["schema_version"] = 3;
     telemetry_json["model"] = "R1_fPLS";
     telemetry_json["mode"] = "native_fdaPDE_cpp";
     telemetry_json["discretization"] = "tetrahedral_fem";
@@ -516,6 +579,10 @@ int run_application(const json &params) {
     telemetry_json["gcv_probes"] = gcv_probes;
     telemetry_json["gcv_seed"] = gcv_seed;
     telemetry_json["lambda_grid"] = lambda_grid;
+    telemetry_json["fpls_loading_gcv_file"] =
+        calibration == "gcv" ? "fpls_loading_gcv.csv" : "not_applicable";
+    telemetry_json["fpls_loading_gcv_replay_matches_fit"] =
+        calibration == "gcv";
     telemetry_json["fixed_direction_lambda"] = fixed_direction_lambda;
     telemetry_json["fixed_loading_lambda"] = fixed_loading_lambda;
     telemetry_json["setup_seconds"] = setup_seconds;

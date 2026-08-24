@@ -123,6 +123,7 @@ evaluate_results <- function(model, data, test_options) {
     finite_solution = model$results$finite_solution,
     direction_lambda = model$results$direction_lambdas[, 1],
     loading_lambda = model$results$loading_lambdas[, 1],
+    fpls_loading_gcv = model$results$fpls_loading_gcv,
     regularization_boundaries = regularization_boundaries,
     provenance = model$results$provenance,
     validation_status = test_options$provenance$validation_status

@@ -183,6 +183,10 @@ fit_native_model <- function(model_name, data, path_list, test_options) {
     Y_loadings = read_cpp_matrix(file.path(raw_dir, "y_loadings.csv")),
     direction_lambdas = read_cpp_matrix(file.path(raw_dir, "direction_lambdas.csv")),
     loading_lambdas = read_cpp_matrix(file.path(raw_dir, "loading_lambdas.csv")),
+    fpls_loading_gcv = if (identical(model_name, "R1_fPLS") &&
+      identical(test_options$regularization$calibration, "gcv")) {
+      suppressWarnings(read.csv(file.path(raw_dir, "fpls_loading_gcv.csv"), check.names = FALSE))
+    } else NULL,
     fpca_lambdas = if (identical(model_name, "fPCR")) {
       read_cpp_matrix(file.path(raw_dir, "fpca_lambdas.csv"))
     } else matrix(NaN, n_comp, 1L),
@@ -208,6 +212,10 @@ fit_native_model <- function(model_name, data, path_list, test_options) {
   check_matrix_shape(raw$Y_loadings, n_responses, n_comp, "Y loadings")
   check_matrix_shape(raw$fpca_lambdas, n_comp, 1L, "fPCA lambdas")
   check_matrix_shape(raw$score_projection_scales, n_comp, 1L, "score projection scales")
+  if (!is.null(raw$fpls_loading_gcv) &&
+      nrow(raw$fpls_loading_gcv) != n_comp * length(test_options$regularization$lambda_grid)) {
+    stop("fPLS loading GCV diagnostics have the wrong number of rows")
+  }
 
   raw$Y_hat <- lapply(seq_len(n_comp), function(h) {
     read_cpp_matrix(file.path(raw_dir, glue::glue("y_hat_h{h}.csv")))

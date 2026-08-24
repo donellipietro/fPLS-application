@@ -63,16 +63,20 @@ mean in the tetrahedral P1 finite-element space with the gradient penalty, and s
 fitted nodal mean from every predictor row. The complete-data run supplies all subjects; each
 outer-CV fit supplies outer-training subjects only and applies the resulting fitted mean to its
 held-out rows. The mean is selected by genuine GCV over the application-expanded grid
-`10^(-12:2)`, which contains the simulation grid and archived `1e-2` value. The lower extension
-was triggered by the first controlled H=6 run selecting the former `1e-9` lower boundary for
-fPLS loading 2. The grid, seed, probe count, EDF, GCV score, selected
+`10^(-15:2)`, which contains the simulation grid and archived `1e-2` value. The lower extension
+was triggered by controlled H=6 runs selecting the former `1e-9` and `1e-12` lower boundaries
+for fPLS loading 2. The grid, seed, probe count, EDF, GCV score, selected
 lambda, coefficients, and nodal fitted mean are exported. The historical script's later overwrite to `group_means` is not
 ported as active behavior.
 
 R1-fPLS and fPCA use that same GCV grid. Smoke CV also
 uses GCV, with reduced probes and iteration limits; the fixed `1e-9` smoke shortcut is no longer
 active. Production evaluation rejects any functional-mean, fPLS, or fPCA selection at a grid
-boundary and exports the complete boundary diagnostic table.
+boundary and exports the complete boundary diagnostic table. For fPLS loadings, the native
+driver also replays the exact loading GCV calculation on each sequential residual, asserts that
+the replayed minimum matches the fitted model, and saves every candidate's lambda, EDF, GCV
+score, and selected flag in `fpls_loading_gcv.csv`. The raw curve remains available when the
+later production boundary gate rejects evaluation.
 
 Every fit records the clean application commit, MD5 checksums for the three input RDS files and the compiled native driver.
 Cached prepared data and native fits are reused only when those checksums, the preprocessing
