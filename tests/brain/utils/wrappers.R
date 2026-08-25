@@ -74,7 +74,7 @@ fit_native_model <- function(model_name, data, path_list, test_options) {
   application_commit <- git_commit(path_list$repo)
   application_worktree_clean <- git_is_clean(path_list$repo)
   if (test_options$provenance$validation_status %in% c(
-    "complete_data_production", "cross_validation_production"
+    "complete_data_production", "cross_validation_production", "slider_resampling_production"
   ) && !application_worktree_clean) {
     stop("production application fits require a clean committed worktree")
   }
@@ -108,9 +108,13 @@ fit_native_model <- function(model_name, data, path_list, test_options) {
       cross_validation_split = test_options$cross_validation[c(
         "n_folds", "n_repeats", "repeat_index", "fold_index", "seed",
         "inner_folds", "evaluation_components", "svm_cost_grid",
-        "class_weighting", "primary_components"
+        "class_weighting", "primary_components", "purpose", "fixed_slider_cost",
+        "test_usage"
       )],
-      svm_tuning_scope = "classifier_only_inner_CV_conditional_on_outer_training_fitted_reducer"
+      svm_tuning_scope = if (identical(
+        test_options$cross_validation$purpose, "interpretive_slider_stability"
+      )) "not_applicable_fixed_cost_geometric_slider" else
+        "classifier_only_inner_CV_conditional_on_outer_training_fitted_reducer"
     ) else list()
   )
   params <- list(

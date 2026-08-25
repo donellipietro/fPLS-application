@@ -18,6 +18,9 @@ source("src/utils/options.R")
 source("tests/brain/config.R")
 source("tests/brain/utils/data_prep.R")
 source("tests/brain/utils/cross_validation.R")
+source("tests/brain/utils/loading_stability.R")
+source("tests/brain/utils/maximum_margin_stability.R")
+source("tests/brain/utils/slider_resampling.R")
 source("tests/brain/utils/wrappers.R")
 source("tests/brain/utils/fit_and_evaluate.R")
 source("tests/brain/utils/models_evaluation.R")
@@ -60,7 +63,10 @@ if (!is.null(cached_data) &&
       test_options$cross_validation$n_folds,
       test_options$cross_validation$repeat_index,
       test_options$cross_validation$fold_index,
-      test_options$cross_validation$seed
+      test_options$cross_validation$seed,
+      include_omitted_data = !identical(
+        test_options$cross_validation$purpose, "interpretive_slider_stability"
+      )
     )
   } else full_data
   saveRDS(
@@ -96,7 +102,10 @@ if (!is.null(cached_data) &&
         train_indices = data$cross_validation$train_indices,
         test_indices = data$cross_validation$test_indices,
         test_counts = as.list(data$cross_validation$test_counts),
-        leakage_control = "functional_mean_response_GCV_threshold_and_classifier_fit_on_training_only"
+        leakage_control = if (identical(
+          test_options$cross_validation$purpose, "interpretive_slider_stability"
+        )) "omitted_subjects_not_used_functional_mean_response_GCV_and_slider_fit_on_training_only" else
+          "functional_mean_response_GCV_threshold_and_classifier_fit_on_training_only"
       ) else NULL,
       response_recoding = list(
         CTRL = "sqrt(p_SCHZ / p_CTRL)",
@@ -108,7 +117,11 @@ if (!is.null(cached_data) &&
     pretty = TRUE
   )
   cat(if (is_cv) {
-    "- Prepared raw training-only CV fold; native fit will estimate its functional mean\n"
+    if (identical(test_options$cross_validation$purpose, "interpretive_slider_stability")) {
+      "- Prepared slider-resampling training fold; omitted subjects will not be used\n"
+    } else {
+      "- Prepared raw training-only CV fold; native fit will estimate its functional mean\n"
+    }
   } else {
     "- Prepared raw complete data; native fit will estimate the overall functional mean\n"
   })

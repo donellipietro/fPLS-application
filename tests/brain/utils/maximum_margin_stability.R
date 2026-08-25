@@ -3,7 +3,7 @@
 # - Desc: Maximum-margin classifiers and functional maps for score prefixes.
 # = ========================================================================== =
 
-fit_maximum_margin_boundary <- function(scores, labels, cost = 1e6) {
+fit_maximum_margin_boundary <- function(scores, labels, cost = 1e6, require_hard_margin = TRUE) {
   if (!requireNamespace("e1071", quietly = TRUE)) {
     stop("maximum-margin sensitivity requires the R package 'e1071'")
   }
@@ -39,7 +39,8 @@ fit_maximum_margin_boundary <- function(scores, labels, cost = 1e6) {
 
   class_sign <- ifelse(labels == "CTRL", 1, -1)
   canonical_margins <- class_sign * decision
-  if (min(canonical_margins) < 1 - 1e-4) {
+  hard_margin <- min(canonical_margins) >= 1 - 1e-4
+  if (require_hard_margin && !hard_margin) {
     stop("linear SVM did not reach the hard-margin solution at cost = ", cost)
   }
 
@@ -64,6 +65,7 @@ fit_maximum_margin_boundary <- function(scores, labels, cost = 1e6) {
     signed_distance = decision / standardized_normal_norm,
     geometric_margin = min(canonical_margins) / standardized_normal_norm,
     minimum_canonical_margin = min(canonical_margins),
+    hard_margin = hard_margin,
     support_vectors = length(model$index),
     accuracy = mean(predicted == labels),
     sensitivity = mean(predicted[labels == "SCHZ"] == "SCHZ"),

@@ -23,7 +23,8 @@ native_model_matches_options <- function(model, model_name, test_options, data, 
     expected <- test_options$cross_validation[c(
       "n_folds", "n_repeats", "repeat_index", "fold_index", "seed",
       "inner_folds", "evaluation_components", "svm_cost_grid",
-      "class_weighting", "primary_components"
+      "class_weighting", "primary_components", "purpose", "fixed_slider_cost",
+      "test_usage"
     )]
     same(
       observed[sort(names(observed))],

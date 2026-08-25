@@ -4,7 +4,7 @@ Each test suite lives in `tests/<suite_name>/` and is run through the root
 Makefile:
 
 ```bash
-make run_test TEST_SUITE=brain TEST_NAME=out_of_sample
+make run_test TEST_SUITE=brain TEST_NAME=slider_resampling
 ```
 
 Before execution, `run_test` invokes the standard `compile` target with the
@@ -40,8 +40,8 @@ scripts.
 
 ## Bundled Suite
 
-- `brain`: reviewer-facing neuroimaging application with full-data R1-fPLS
-  diagnostics and leakage-safe R1-fPLS versus fPCR repeated CV.
+- `brain`: reviewer-facing neuroimaging application with complete-data R1-fPLS diagnostics
+  and repeated delete-one-fold training-sample stability of the H=3 slider loading.
 
 ## Execution Flow
 
@@ -63,5 +63,5 @@ Slurm jobs. Suite `config.R` files should parse it and `generate_options.R`
 should use it to reduce repetitions and/or option grids.
 
 ```bash
-SMOKE_TEST=1 make run_test TEST_SUITE=brain TEST_NAME=out_of_sample
+SMOKE_TEST=1 make run_test TEST_SUITE=brain TEST_NAME=slider_resampling
 ```

@@ -35,7 +35,9 @@ regularization_boundary_diagnostics <- function(model, test_options) {
 }
 
 report_production_grid_boundaries <- function(diagnostics, validation_status) {
-  production <- validation_status %in% c("complete_data_production", "cross_validation_production")
+  production <- validation_status %in% c(
+    "complete_data_production", "cross_validation_production", "slider_resampling_production"
+  )
   boundary <- diagnostics$selected_at_lower_boundary | diagnostics$selected_at_upper_boundary
   if (production && any(boundary)) {
     hits <- diagnostics[boundary, c("quantity", "component", "selected_lambda", "grid_min", "grid_max")]
@@ -83,6 +85,11 @@ orient_ctrl_scores <- function(labels, scores) {
 }
 
 evaluate_results <- function(model, data, test_options) {
+  if (isTRUE(test_options$cross_validation$enabled) && identical(
+    test_options$cross_validation$purpose, "interpretive_slider_stability"
+  )) {
+    return(evaluate_slider_resampling(model, data, test_options))
+  }
   if (isTRUE(test_options$cross_validation$enabled)) {
     return(evaluate_cv_model(model, data, test_options))
   }

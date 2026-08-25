@@ -26,6 +26,7 @@ source("tests/brain/utils/models_evaluation.R")
 source("tests/brain/utils/loading_stability.R")
 source("tests/brain/utils/cv_aggregation.R")
 source("tests/brain/utils/maximum_margin_stability.R")
+source("tests/brain/utils/slider_resampling.R")
 source("tests/brain/utils/paraview_export.R")
 
 args <- commandArgs(trailingOnly = TRUE)
@@ -135,6 +136,94 @@ all_gcv_selections_interior <- is.null(regularization_boundaries) || !any(
   regularization_boundaries$selected_at_lower_boundary |
     regularization_boundaries$selected_at_upper_boundary
 )
+
+if (requested == "slider_resampling") {
+  missing_evaluations <- setdiff(expected_evaluations, names(all_evaluations))
+  if (length(missing_evaluations) > 0L) {
+    write_json(
+      list(
+        schema_version = 2L,
+        requested = requested,
+        run_complete = FALSE,
+        status = "missing_slider_resampling_fits",
+        completed_fits = length(all_evaluations),
+        expected_fits = length(expected_evaluations),
+        missing_evaluations = missing_evaluations
+      ),
+      file.path(aggregate_dir, "application_run_status.json"),
+      auto_unbox = TRUE,
+      pretty = TRUE
+    )
+    stop(glue::glue(
+      "Slider-resampling aggregation found {length(all_evaluations)} of {length(expected_evaluations)} expected fits"
+    ))
+  }
+  validation_statuses <- unique(vapply(all_evaluations, function(value) {
+    as.character(value$provenance$validation_status)
+  }, character(1)))
+  run_status <- if (identical(validation_statuses, "slider_resampling_smoke")) {
+    "smoke_complete"
+  } else if (identical(validation_statuses, "slider_resampling_production")) {
+    "production_complete"
+  } else if (identical(validation_statuses, "slider_resampling_noncanonical")) {
+    "noncanonical_complete"
+  } else {
+    stop("slider-resampling evaluations have missing or mixed validation provenance")
+  }
+  image_dir <- file.path(cfg$PATH_IMAGES, test_suite, "aggregate", requested)
+  resampling <- aggregate_slider_resampling(all_evaluations, aggregate_dir, image_dir, cfg)
+  if (!resampling$all_H3_hard_margin_separable) {
+    run_status <- paste0(run_status, "_with_nonseparable_H3_training_folds")
+  }
+  if (!resampling$all_GCV_selections_interior) {
+    run_status <- paste0(run_status, "_with_GCV_boundary_selection")
+  }
+  write_json(
+    list(
+      schema_version = 2L,
+      requested = requested,
+      run_complete = TRUE,
+      status = run_status,
+      validation_status = validation_statuses,
+      design = list(
+        method = "repeated_stratified_delete_one_fold_training_sample_stability",
+        repeats = resampling$repeats,
+        folds = resampling$folds,
+        native_fits = resampling$fits,
+        native_fit = "one_progressive_R1_fPLS_H6_fit_per_training_fold",
+        stratification = "class_labels_used_only_to_construct_fold_assignment",
+        omitted_subjects_usage = "define_the_training_perturbation_only",
+        test_predictions_or_metrics = "not_computed",
+        complete_data_reference = "accepted_H3_slider_from_h_stability",
+        complete_data_reference_status = resampling$complete_data_reference_status,
+        complete_data_reference_map_md5 = resampling$complete_data_reference_map_md5,
+        complete_reference_overlap_caveat = "descriptive_stability_not_independent_validation"
+      ),
+      slider = list(
+        definition = "R_H_times_score_SD_times_unit_standardized_SVM_normal",
+        retained_components = 3L,
+        fixed_SVM_cost = 1e6,
+        class_orientation = "positive_is_CTRL",
+        posthoc_sign_alignment = FALSE,
+        comparable_training_fits = resampling$comparable_H3_fits,
+        all_training_fits_H3_hard_margin_separable = resampling$all_H3_hard_margin_separable,
+        metrics = c("tetrahedral_P1_FEM_mass_correlation_rho_H3", "relative_FEM_mass_error_e_H3")
+      ),
+      training_prefix_separation = list(
+        prefixes = 1:6,
+        output = "slider_resampling_Hmin_distribution.csv"
+      ),
+      all_test_data_unused = resampling$all_test_data_unused,
+      all_production_GCV_selections_interior = resampling$all_GCV_selections_interior,
+      uncertainty = "descriptive_overlapping_training_sets_not_independent_replicates"
+    ),
+    file.path(aggregate_dir, "application_run_status.json"),
+    auto_unbox = TRUE,
+    pretty = TRUE
+  )
+  cat("Slider-resampling aggregation completed.\n")
+  quit(save = "no", status = 0)
+}
 
 if (requested == "out_of_sample") {
   missing_evaluations <- setdiff(expected_evaluations, names(all_evaluations))
@@ -384,28 +473,91 @@ if (requested == "h_stability" && has_h6_fpls) {
     elements = elements
   )
 
-  stability <- rbind(
-    maximum_margin_summary$spatial_stability[
-      maximum_margin_summary$spatial_stability$quantity == "Maximum-margin slider loading",
-      , drop = FALSE
-    ],
-    transform(beta_stability_summary$summary, quantity = "Regression coefficient beta")
+  slider_stability <- maximum_margin_summary$spatial_stability[
+    maximum_margin_summary$spatial_stability$quantity == "Maximum-margin slider loading" &
+      maximum_margin_summary$spatial_stability$retained_components %in% 4:6,
+    , drop = FALSE
+  ]
+  slider_stability <- data.frame(
+    reference_components = 3L,
+    retained_components = slider_stability$retained_components,
+    rho_H = slider_stability$mass_correlation,
+    e_H = slider_stability$relative_mass_error,
+    reference_mass_norm = slider_stability$reference_mass_norm,
+    candidate_mass_norm = slider_stability$candidate_mass_norm,
+    sign_alignment = slider_stability$sign_alignment
   )
-  write.csv(stability, file.path(aggregate_dir, "decision_boundary_and_beta_stability_by_H.csv"), row.names = FALSE)
-  stability_plot <- ggplot(stability, aes(retained_components, relative_mass_error, colour = quantity)) +
+  write.csv(slider_stability, file.path(aggregate_dir, "slider_stability_by_H.csv"), row.names = FALSE)
+  write.csv(
+    subset(beta_stability_summary$summary, retained_components %in% 4:6),
+    file.path(aggregate_dir, "beta_stability_by_H.csv"),
+    row.names = FALSE
+  )
+  slider_plot_data <- rbind(
+    data.frame(retained_components = slider_stability$retained_components, metric = "rho_H", value = slider_stability$rho_H),
+    data.frame(retained_components = slider_stability$retained_components, metric = "e_H", value = slider_stability$e_H)
+  )
+  stability_plot <- ggplot(slider_plot_data, aes(retained_components, value, colour = metric)) +
     geom_line(linewidth = 0.7) +
     geom_point(size = 2) +
-    scale_x_continuous(breaks = 3:6) +
-    labs(x = "Retained components H", y = "Relative FEM mass-norm difference from H=3", colour = NULL) +
+    facet_wrap(~ metric, scales = "free_y") +
+    scale_x_continuous(breaks = 4:6) +
+    labs(x = "Retained components H", y = "Comparison with H=3 slider", colour = NULL) +
     theme_bw() +
-    theme(legend.position = "top")
+    theme(legend.position = "none")
   ggsave(
-    plot_file(image_dir, "decision_boundary_and_beta_stability_by_H"),
+    plot_file(image_dir, "slider_stability_by_H"),
     stability_plot,
     width = 7,
     height = 4.5,
     dpi = 180
   )
+
+  functional_mean <- drop(as.matrix(suppressWarnings(read.csv(
+    file.path(raw_dir, "functional_mean_locations.csv"), check.names = FALSE
+  ))))
+  X_fitted <- lapply(seq_len(6L), function(h) {
+    X_reconstruction <- as.matrix(suppressWarnings(read.csv(
+      file.path(raw_dir, glue::glue("x_hat_locations_h{h}.csv")), check.names = FALSE
+    )))
+    sweep(X_reconstruction, 2L, functional_mean, "+", check.margin = FALSE)
+  })
+  Y_fitted <- lapply(seq_len(6L), function(h) {
+    as.matrix(suppressWarnings(read.csv(
+      file.path(raw_dir, glue::glue("y_hat_h{h}.csv")), check.names = FALSE
+    )))
+  })
+  explained_structure <- observation_explained_structure(
+    prepared_data$X, prepared_data$Y, X_fitted, Y_fitted
+  )
+  write.csv(
+    explained_structure,
+    file.path(aggregate_dir, "explained_structure_by_H.csv"),
+    row.names = FALSE
+  )
+  explained_labels <- c(
+    X_variance_explained = "X variance reconstructed (%)",
+    Y_variance_explained = "Y variance reconstructed (%)",
+    XY_cross_covariance_explained = "X-Y cross-covariance reconstructed (%)"
+  )
+  for (metric in names(explained_labels)) {
+    plot <- ggplot(
+      explained_structure,
+      aes(retained_components, 100 * .data[[metric]])
+    ) +
+      geom_line(linewidth = 0.7, colour = "#007C91") +
+      geom_point(size = 2, colour = "#007C91") +
+      scale_x_continuous(breaks = 1:6) +
+      labs(x = "Retained components H", y = explained_labels[[metric]]) +
+      theme_bw()
+    ggsave(
+      plot_file(image_dir, metric),
+      plot,
+      width = 7,
+      height = 4.5,
+      dpi = 180
+    )
+  }
 
   classifier_formula_max_abs_error <- max(vapply(3:6, function(h) {
     directions_h <- x_directions[, seq_len(h), drop = FALSE]
@@ -511,37 +663,6 @@ if (requested == "h_stability" && has_h6_fpls) {
     dpi = 180
   )
 
-  correlation_plot_data <- rbind(
-    data.frame(
-      retained_components = maximum_margin_summary$diagnostics$retained_components,
-      quantity = "Score-space decision",
-      correlation = maximum_margin_summary$diagnostics$decision_correlation_with_H3
-    ),
-    data.frame(
-      retained_components = maximum_margin_summary$spatial_stability$retained_components,
-      quantity = maximum_margin_summary$spatial_stability$quantity,
-      correlation = maximum_margin_summary$spatial_stability$mass_correlation
-    )
-  )
-  correlation_plot <- ggplot(
-    correlation_plot_data,
-    aes(retained_components, correlation, colour = quantity)
-  ) +
-    geom_line(linewidth = 0.7) +
-    geom_point(size = 2) +
-    scale_x_continuous(breaks = 3:6) +
-    scale_y_continuous(breaks = seq(0, 1, 0.2)) +
-    coord_cartesian(ylim = c(0, 1)) +
-    labs(x = "Retained components H", y = "Correlation with H=3", colour = NULL) +
-    theme_bw() +
-    theme(legend.position = "top")
-  ggsave(
-    plot_file(image_dir, "maximum_margin_correlations_by_H"),
-    correlation_plot,
-    width = 7,
-    height = 4.5,
-    dpi = 180
-  )
 }
 
 write_json(
@@ -571,8 +692,18 @@ write_json(
         reference = "H3_maximum_margin_SVM_slider_loading",
         comparisons = "H4_to_H6_maximum_margin_SVM_slider_loadings",
         definition = "R_H_times_score_SD_times_unit_standardized_SVM_normal",
-        metric = "tetrahedral_P1_FEM_mass_relative_norm_without_posthoc_sign_flip_CTRL_orientation_fixed",
+        metrics = c("tetrahedral_P1_FEM_mass_correlation_rho_H", "relative_FEM_mass_error_e_H"),
         Gram_Schmidt_rotation = "removed_from_active_analysis"
+      )
+    },
+    explained_structure = if (is.null(maximum_margin_summary)) {
+      "requires_H6_fit"
+    } else {
+      list(
+        prefixes = 1:6,
+        metrics = c("X_variance_explained", "Y_variance_explained", "XY_cross_covariance_explained"),
+        norm = "observation_location_Frobenius_matching_simulation_study",
+        FEM_mass_matrix = "not_used"
       )
     },
     beta_stability = if (is.null(beta_stability_summary)) {

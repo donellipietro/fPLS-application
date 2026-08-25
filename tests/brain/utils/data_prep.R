@@ -108,12 +108,13 @@ stratified_fold_ids <- function(labels, n_folds, repeat_index, seed = 0L) {
   fold_ids
 }
 
-prepare_brain_cv_split <- function(data, n_folds, repeat_index, fold_index, seed = 0L) {
+prepare_brain_cv_split <- function(
+    data, n_folds, repeat_index, fold_index, seed = 0L, include_omitted_data = TRUE) {
   fold_ids <- stratified_fold_ids(data$labels, n_folds, repeat_index, seed)
   test_indices <- which(fold_ids == as.integer(fold_index))
   train_indices <- which(fold_ids != as.integer(fold_index))
   train_response <- recoded_response(data$labels[train_indices])
-  list(
+  split <- list(
     X = data$X[train_indices, , drop = FALSE],
     Y = train_response$y,
     labels = train_response$labels,
@@ -136,11 +137,16 @@ prepare_brain_cv_split <- function(data, n_folds, repeat_index, fold_index, seed
       seed = as.integer(seed),
       train_indices = train_indices,
       test_indices = test_indices,
-      test_X = data$X[test_indices, , drop = FALSE],
-      test_labels = factor(as.character(data$labels[test_indices]), levels = c("CTRL", "SCHZ")),
       test_counts = table(factor(as.character(data$labels[test_indices]), levels = c("CTRL", "SCHZ")))
     )
   )
+  if (include_omitted_data) {
+    split$cross_validation$test_X <- data$X[test_indices, , drop = FALSE]
+    split$cross_validation$test_labels <- factor(
+      as.character(data$labels[test_indices]), levels = c("CTRL", "SCHZ")
+    )
+  }
+  split
 }
 
 write_brain_native_inputs <- function(data, raw_dir) {
