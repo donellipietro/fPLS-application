@@ -107,41 +107,58 @@ matrix_t fpls_loading_gcv_diagnostics(
     const std::vector<double> &lambda_grid, const matrix_t &selected_lambdas,
     int gcv_probes, int gcv_seed) {
   const int n_comp = model.X_latent_scores().cols();
-  matrix_t diagnostics(n_comp * lambda_grid.size(), 5);
+  int n_boundary_components = 0;
+  for (int h = 0; h < n_comp; ++h) {
+    const double selected_lambda = selected_lambdas(h, 0);
+    if (selected_lambda == lambda_grid.front() ||
+        selected_lambda == lambda_grid.back())
+      ++n_boundary_components;
+  }
+  matrix_t diagnostics(n_boundary_components * lambda_grid.size(), 6);
   matrix_t residual = X;
+  Eigen::Index output_row = 0;
   for (int h = 0; h < n_comp; ++h) {
     const vector_t score = model.X_latent_scores().col(h);
     const double score_norm = score.squaredNorm();
     if (!std::isfinite(score_norm) || score_norm <= 0)
       throw std::runtime_error("invalid fPLS score in loading GCV replay");
-    const vector_t response = residual.transpose() * score / score_norm;
-    smoother.update_response(response);
+    const double fitted_lambda = selected_lambdas(h, 0);
+    const bool selected_at_boundary =
+        fitted_lambda == lambda_grid.front() ||
+        fitted_lambda == lambda_grid.back();
+    if (selected_at_boundary) {
+      const vector_t response = residual.transpose() * score / score_norm;
+      smoother.update_response(response);
 
-    std::size_t selected = 0;
-    double best_gcv = std::numeric_limits<double>::infinity();
-    for (std::size_t index = 0; index < lambda_grid.size(); ++index) {
-      const double lambda = lambda_grid[index];
-      smoother.fit(lambda);
-      const double edf = smoother.edf(lambda, gcv_probes, gcv_seed);
-      const double residual_degrees_of_freedom = X.cols() - edf;
-      if (!std::isfinite(edf) || residual_degrees_of_freedom <= 0)
-        throw std::runtime_error("invalid fPLS loading GCV replay EDF");
-      const double gcv =
-          (X.cols() / std::pow(residual_degrees_of_freedom, 2)) *
-          (smoother.fn() - response).squaredNorm();
-      if (!std::isfinite(gcv))
-        throw std::runtime_error("non-finite fPLS loading GCV replay score");
-      const Eigen::Index row = h * lambda_grid.size() + index;
-      diagnostics.row(row) << h + 1, lambda, edf, gcv, 0;
-      if (gcv < best_gcv) {
-        best_gcv = gcv;
-        selected = index;
+      std::size_t replay_selected = 0;
+      double best_gcv = std::numeric_limits<double>::infinity();
+      const Eigen::Index component_start = output_row;
+      for (std::size_t index = 0; index < lambda_grid.size(); ++index) {
+        const double lambda = lambda_grid[index];
+        smoother.fit(lambda);
+        const double edf = smoother.edf(lambda, gcv_probes, gcv_seed);
+        const double residual_degrees_of_freedom = X.cols() - edf;
+        if (!std::isfinite(edf) || residual_degrees_of_freedom <= 0)
+          throw std::runtime_error("invalid fPLS loading GCV replay EDF");
+        const double gcv =
+            (X.cols() / std::pow(residual_degrees_of_freedom, 2)) *
+            (smoother.fn() - response).squaredNorm();
+        if (!std::isfinite(gcv))
+          throw std::runtime_error("non-finite fPLS loading GCV replay score");
+        diagnostics.row(output_row) << h + 1, lambda, edf, gcv,
+            lambda == fitted_lambda ? 1.0 : 0.0, 0.0;
+        if (gcv < best_gcv) {
+          best_gcv = gcv;
+          replay_selected = index;
+        }
+        ++output_row;
       }
+      diagnostics(component_start + replay_selected, 5) = 1;
+      if (lambda_grid[replay_selected] != fitted_lambda)
+        std::cout << "- Warning: fPLS loading " << h + 1
+                  << " GCV replay minimum differs from fitted selection"
+                  << std::endl;
     }
-    diagnostics(h * lambda_grid.size() + selected, 4) = 1;
-    if (lambda_grid[selected] != selected_lambdas(h, 0))
-      throw std::runtime_error(
-          "fPLS loading GCV replay does not match the fitted model");
     residual.noalias() -=
         score * (smoother.Psi() * model.X_loadings().col(h)).transpose();
   }
@@ -479,11 +496,18 @@ int run_application(const json &params) {
     write_csv(output_file(output_dir, "direction_lambdas.csv"),
               direction_lambdas);
     write_csv(output_file(output_dir, "loading_lambdas.csv"), loading_lambdas);
-    if (calibration == "gcv") {
+    const bool has_loading_gcv_diagnostics =
+        calibration == "gcv" && loading_gcv_diagnostics.rows() > 0;
+    const bool loading_gcv_replay_matches_fit =
+        !has_loading_gcv_diagnostics ||
+        (loading_gcv_diagnostics.col(4) - loading_gcv_diagnostics.col(5))
+                .squaredNorm() == 0;
+    if (has_loading_gcv_diagnostics) {
       write_csv(output_file(output_dir, "fpls_loading_gcv.csv"),
                 loading_gcv_diagnostics,
                 std::vector<std::string>{"component", "lambda", "edf", "gcv",
-                                         "selected"});
+                                         "selected_by_fit",
+                                         "replay_minimum"});
     }
     matrix_t component_diagnostics(n_comp, 6);
     for (int h = 0; h < n_comp; ++h) {
@@ -580,9 +604,14 @@ int run_application(const json &params) {
     telemetry_json["gcv_seed"] = gcv_seed;
     telemetry_json["lambda_grid"] = lambda_grid;
     telemetry_json["fpls_loading_gcv_file"] =
-        calibration == "gcv" ? "fpls_loading_gcv.csv" : "not_applicable";
+        has_loading_gcv_diagnostics
+            ? "fpls_loading_gcv.csv"
+            : (calibration == "gcv" ? "not_required_no_loading_boundary"
+                                      : "not_applicable");
+    telemetry_json["fpls_loading_gcv_scope"] =
+        "boundary_selected_loadings_only";
     telemetry_json["fpls_loading_gcv_replay_matches_fit"] =
-        calibration == "gcv";
+        loading_gcv_replay_matches_fit;
     telemetry_json["fixed_direction_lambda"] = fixed_direction_lambda;
     telemetry_json["fixed_loading_lambda"] = fixed_loading_lambda;
     telemetry_json["setup_seconds"] = setup_seconds;

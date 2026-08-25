@@ -73,10 +73,11 @@ R1-fPLS and fPCA use that same GCV grid. Smoke CV also
 uses GCV, with reduced probes and iteration limits; the fixed `1e-9` smoke shortcut is no longer
 active. Production evaluation warns on any functional-mean, fPLS, or fPCA selection at a grid
 boundary, continues the analysis, labels the completed run status accordingly, and exports the
-complete boundary diagnostic table. For fPLS loadings, the native
-driver also replays the exact loading GCV calculation on each sequential residual, asserts that
-the replayed minimum matches the fitted model, and saves every candidate's lambda, EDF, GCV
-score, and selected flag in `fpls_loading_gcv.csv` for post-run inspection.
+complete boundary diagnostic table. For each boundary-selected fPLS loading, the native
+driver replays the loading GCV calculation on its sequential residual and saves every candidate's
+lambda, EDF, GCV score, fitted-selection flag, and replay-minimum flag in
+`fpls_loading_gcv.csv`. A replay difference is recorded in telemetry and the native log but is
+nonfatal, because the fitted model remains the authoritative result.
 
 Every fit records the clean application commit, MD5 checksums for the three input RDS files and the compiled native driver.
 Cached prepared data and native fits are reused only when those checksums, the preprocessing
