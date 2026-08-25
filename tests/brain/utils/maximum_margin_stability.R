@@ -83,13 +83,18 @@ maximum_margin_prefix_sensitivity <- function(
     labels,
     points,
     elements,
-    reference_h = 3L) {
+    reference_h = 3L,
+    require_hard_margin = TRUE,
+    compute_classifier_maps = TRUE) {
   elements <- matrix(as.integer(elements), ncol = 4L)
   volumes <- tetrahedral_volumes(points, elements)
   max_h <- ncol(scores)
   prefixes <- reference_h:max_h
   fits <- setNames(lapply(prefixes, function(h) {
-    fit_maximum_margin_boundary(scores[, seq_len(h), drop = FALSE], labels)
+    fit_maximum_margin_boundary(
+      scores[, seq_len(h), drop = FALSE], labels,
+      require_hard_margin = require_hard_margin
+    )
   }), prefixes)
 
   reconstruction_maps <- setNames(lapply(prefixes, function(h) {
@@ -97,11 +102,13 @@ maximum_margin_prefix_sensitivity <- function(
     slider_direction <- fit$score_scale * fit$unit_standardized_normal
     x_loadings[, seq_len(h), drop = FALSE] %*% slider_direction
   }), prefixes)
-  classifier_maps <- setNames(lapply(prefixes, function(h) {
-    directions <- x_directions[, seq_len(h), drop = FALSE]
-    loadings <- x_loadings[, seq_len(h), drop = FALSE]
-    directions %*% solve(crossprod(loadings, directions), fits[[as.character(h)]]$score_normal)
-  }), prefixes)
+  classifier_maps <- if (compute_classifier_maps) {
+    setNames(lapply(prefixes, function(h) {
+      directions <- x_directions[, seq_len(h), drop = FALSE]
+      loadings <- x_loadings[, seq_len(h), drop = FALSE]
+      directions %*% solve(crossprod(loadings, directions), fits[[as.character(h)]]$score_normal)
+    }), prefixes)
+  } else NULL
 
   reference_fit <- fits[[as.character(reference_h)]]
   reference_predictions <- reference_fit$decision >= 0
@@ -112,6 +119,7 @@ maximum_margin_prefix_sensitivity <- function(
       geometric_margin_standardized_scores = fit$geometric_margin,
       support_vectors = fit$support_vectors,
       minimum_canonical_margin = fit$minimum_canonical_margin,
+      hard_margin = fit$hard_margin,
       accuracy = fit$accuracy,
       sensitivity = fit$sensitivity,
       specificity = fit$specificity,
@@ -120,23 +128,23 @@ maximum_margin_prefix_sensitivity <- function(
       prediction_agreement_with_H3 = mean(reference_predictions == (fit$decision >= 0))
     )
   }))
-  if (any(diff(diagnostics$geometric_margin_standardized_scores) < -1e-8)) {
+  if (require_hard_margin && any(diff(diagnostics$geometric_margin_standardized_scores) < -1e-8)) {
     stop("maximum margin decreased after adding a progressive score component")
   }
 
   spatial_stability <- do.call(rbind, lapply(prefixes, function(h) {
-    rbind(
-      transform(
-        mass_stability(
-          reconstruction_maps[[as.character(reference_h)]],
-          reconstruction_maps[[as.character(h)]],
-          elements,
-          volumes
-        ),
-        retained_components = h,
-        quantity = "Maximum-margin slider loading"
+    slider <- transform(
+      mass_stability(
+        reconstruction_maps[[as.character(reference_h)]],
+        reconstruction_maps[[as.character(h)]],
+        elements,
+        volumes
       ),
-      transform(
+      retained_components = h,
+      quantity = "Maximum-margin slider loading"
+    )
+    if (compute_classifier_maps) {
+      rbind(slider, transform(
         mass_stability(
           classifier_maps[[as.character(reference_h)]],
           classifier_maps[[as.character(h)]],
@@ -145,8 +153,8 @@ maximum_margin_prefix_sensitivity <- function(
         ),
         retained_components = h,
         quantity = "Maximum-margin classifier coefficient"
-      )
-    )
+      ))
+    } else slider
   }))
 
   pad <- function(values) c(values, rep(NA_real_, max_h - length(values)))

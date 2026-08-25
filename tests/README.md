@@ -40,8 +40,8 @@ scripts.
 
 ## Bundled Suite
 
-- `brain`: reviewer-facing neuroimaging application with complete-data R1-fPLS diagnostics
-  and repeated delete-one-fold training-sample stability of the H=3 slider loading.
+- `brain`: reviewer-facing neuroimaging application with complete-data and repeated
+  delete-one-fold H=3 slider stability for R1-fPLS and the separate fPCR comparator.
 
 ## Execution Flow
 

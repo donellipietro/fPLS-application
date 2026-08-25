@@ -137,7 +137,7 @@ all_gcv_selections_interior <- is.null(regularization_boundaries) || !any(
     regularization_boundaries$selected_at_upper_boundary
 )
 
-if (requested == "slider_resampling") {
+if (requested %in% c("slider_resampling", "fpcr_slider_resampling")) {
   missing_evaluations <- setdiff(expected_evaluations, names(all_evaluations))
   if (length(missing_evaluations) > 0L) {
     write_json(
@@ -190,12 +190,17 @@ if (requested == "slider_resampling") {
         repeats = resampling$repeats,
         folds = resampling$folds,
         native_fits = resampling$fits,
-        native_fit = "one_progressive_R1_fPLS_H6_fit_per_training_fold",
+        dimension_reducer = resampling$dimension_reducer,
+        native_fit = paste0("one_progressive_", resampling$dimension_reducer, "_H6_fit_per_training_fold"),
         stratification = "class_labels_used_only_to_construct_fold_assignment",
         omitted_subjects_usage = "define_the_training_perturbation_only",
         test_predictions_or_metrics = "not_computed",
-        complete_data_reference = "accepted_H3_slider_from_h_stability",
+        complete_data_reference = paste0(
+          "accepted_H3_slider_from_", resampling$complete_data_reference_target
+        ),
         complete_data_reference_status = resampling$complete_data_reference_status,
+        complete_data_reference_first_H = resampling$complete_data_reference_first_H,
+        complete_data_reference_H3_hard_margin = resampling$complete_data_reference_H3_hard_margin,
         complete_data_reference_map_md5 = resampling$complete_data_reference_map_md5,
         complete_reference_overlap_caveat = "descriptive_stability_not_independent_validation"
       ),
@@ -360,7 +365,7 @@ if (requested == "out_of_sample") {
   quit(save = "no", status = 0)
 }
 
-if (identical(requested, "h_stability")) {
+if (requested %in% c("h_stability", "fpcr_h_stability")) {
   validation_statuses <- unique(vapply(all_evaluations, function(value) {
     status <- value$provenance$validation_status
     if (is.null(status)) NA_character_ else as.character(status)
@@ -378,7 +383,7 @@ if (identical(requested, "h_stability")) {
       auto_unbox = TRUE,
       pretty = TRUE
     )
-    stop("H-stability aggregation requires complete_data_production provenance")
+    stop("Complete-data slider aggregation requires complete_data_production provenance")
   }
 }
 
@@ -439,11 +444,14 @@ if (!is.null(separation)) {
 beta_stability_summary <- NULL
 maximum_margin_summary <- NULL
 classifier_formula_max_abs_error <- NULL
-has_h6_fpls <- any(vapply(all_evaluations, function(value) {
-  identical(value$scenario, "h_stability_H6") && identical(value$dimension_reducer, "R1-fPLS")
+complete_reducer <- if (identical(requested, "fpcr_h_stability")) "fPCR" else "R1-fPLS"
+complete_model <- if (identical(complete_reducer, "fPCR")) "fPCR" else "R1_fPLS"
+complete_scenario <- paste0(requested, "_H6")
+has_complete_h6 <- any(vapply(all_evaluations, function(value) {
+  identical(value$scenario, complete_scenario) && identical(value$dimension_reducer, complete_reducer)
 }, logical(1)))
-if (requested == "h_stability" && has_h6_fpls) {
-  raw_dir <- file.path(path_list$results, "h_stability", "h_stability_H6", "batch_1", "raw", "R1_fPLS")
+if (requested %in% c("h_stability", "fpcr_h_stability") && has_complete_h6) {
+  raw_dir <- file.path(path_list$results, requested, complete_scenario, "batch_1", "raw", complete_model)
   batch_dir <- dirname(dirname(raw_dir))
   image_dir <- file.path(cfg$PATH_IMAGES, test_suite, "aggregate", requested)
   dir.create(image_dir, recursive = TRUE, showWarnings = FALSE)
@@ -453,11 +461,13 @@ if (requested == "h_stability" && has_h6_fpls) {
     file.path(raw_dir, "x_loadings_coefficients.csv"),
     check.names = FALSE
   )))
-  y_loadings <- as.matrix(suppressWarnings(read.csv(file.path(raw_dir, "y_loadings.csv"), check.names = FALSE)))
-  beta_coefficients <- setNames(lapply(3:6, function(h) {
-    as.matrix(suppressWarnings(read.csv(file.path(raw_dir, glue::glue("beta_coefficients_h{h}.csv")), check.names = FALSE)))
-  }), as.character(3:6))
-  beta_stability_summary <- beta_stability(beta_coefficients, points, elements)
+  if (identical(complete_reducer, "R1-fPLS")) {
+    y_loadings <- as.matrix(suppressWarnings(read.csv(file.path(raw_dir, "y_loadings.csv"), check.names = FALSE)))
+    beta_coefficients <- setNames(lapply(3:6, function(h) {
+      as.matrix(suppressWarnings(read.csv(file.path(raw_dir, glue::glue("beta_coefficients_h{h}.csv")), check.names = FALSE)))
+    }), as.character(3:6))
+    beta_stability_summary <- beta_stability(beta_coefficients, points, elements)
+  }
 
   prepared_data <- readRDS(file.path(batch_dir, "prepared_data.rds"))
   x_directions <- as.matrix(suppressWarnings(read.csv(
@@ -470,7 +480,9 @@ if (requested == "h_stability" && has_h6_fpls) {
     x_directions = x_directions,
     labels = prepared_data$labels,
     points = points,
-    elements = elements
+    elements = elements,
+    require_hard_margin = identical(complete_reducer, "R1-fPLS"),
+    compute_classifier_maps = identical(complete_reducer, "R1-fPLS")
   )
 
   slider_stability <- maximum_margin_summary$spatial_stability[
@@ -488,11 +500,13 @@ if (requested == "h_stability" && has_h6_fpls) {
     sign_alignment = slider_stability$sign_alignment
   )
   write.csv(slider_stability, file.path(aggregate_dir, "slider_stability_by_H.csv"), row.names = FALSE)
-  write.csv(
-    subset(beta_stability_summary$summary, retained_components %in% 4:6),
-    file.path(aggregate_dir, "beta_stability_by_H.csv"),
-    row.names = FALSE
-  )
+  if (!is.null(beta_stability_summary)) {
+    write.csv(
+      subset(beta_stability_summary$summary, retained_components %in% 4:6),
+      file.path(aggregate_dir, "beta_stability_by_H.csv"),
+      row.names = FALSE
+    )
+  }
   slider_plot_data <- rbind(
     data.frame(retained_components = slider_stability$retained_components, metric = "rho_H", value = slider_stability$rho_H),
     data.frame(retained_components = slider_stability$retained_components, metric = "e_H", value = slider_stability$e_H)
@@ -559,17 +573,19 @@ if (requested == "h_stability" && has_h6_fpls) {
     )
   }
 
-  classifier_formula_max_abs_error <- max(vapply(3:6, function(h) {
-    directions_h <- x_directions[, seq_len(h), drop = FALSE]
-    loadings_h <- x_loadings[, seq_len(h), drop = FALSE]
-    reconstructed_beta <- directions_h %*% solve(
-      crossprod(loadings_h, directions_h),
-      as.numeric(y_loadings[1, seq_len(h)])
-    )
-    max(abs(reconstructed_beta - beta_coefficients[[as.character(h)]]))
-  }, numeric(1)))
-  if (classifier_formula_max_abs_error > 1e-10) {
-    stop("score-space to functional coefficient reconstruction does not match native Beta(h)")
+  if (identical(complete_reducer, "R1-fPLS")) {
+    classifier_formula_max_abs_error <- max(vapply(3:6, function(h) {
+      directions_h <- x_directions[, seq_len(h), drop = FALSE]
+      loadings_h <- x_loadings[, seq_len(h), drop = FALSE]
+      reconstructed_beta <- directions_h %*% solve(
+        crossprod(loadings_h, directions_h),
+        as.numeric(y_loadings[1, seq_len(h)])
+      )
+      max(abs(reconstructed_beta - beta_coefficients[[as.character(h)]]))
+    }, numeric(1)))
+    if (classifier_formula_max_abs_error > 1e-10) {
+      stop("score-space to functional coefficient reconstruction does not match native Beta(h)")
+    }
   }
 
   write.csv(
@@ -595,54 +611,58 @@ if (requested == "h_stability" && has_h6_fpls) {
       file.path(map_dir, glue::glue("reconstruction_loading_h{h}.csv")),
       row.names = FALSE
     )
-    write.csv(
-      data.frame(coefficient = drop(maximum_margin_summary$classifier_maps[[as.character(h)]])),
-      file.path(map_dir, glue::glue("classifier_coefficient_h{h}.csv")),
-      row.names = FALSE
-    )
+    if (!is.null(maximum_margin_summary$classifier_maps)) {
+      write.csv(
+        data.frame(coefficient = drop(maximum_margin_summary$classifier_maps[[as.character(h)]])),
+        file.path(map_dir, glue::glue("classifier_coefficient_h{h}.csv")),
+        row.names = FALSE
+      )
+    }
   }
 
-  volumes <- tetrahedral_volumes(points, matrix(as.integer(elements), ncol = 4L))
-  mass_unit <- function(values) {
-    values <- matrix(as.numeric(values), ncol = 1L)
-    drop(values / sqrt(drop(mass_crossprod(values, values, elements, volumes))))
+  if (identical(complete_reducer, "R1-fPLS")) {
+    volumes <- tetrahedral_volumes(points, matrix(as.integer(elements), ncol = 4L))
+    mass_unit <- function(values) {
+      values <- matrix(as.numeric(values), ncol = 1L)
+      drop(values / sqrt(drop(mass_crossprod(values, values, elements, volumes))))
+    }
+    paraview_fields <- list()
+    for (h in 3:6) {
+      beta_h <- drop(beta_coefficients[[as.character(h)]])
+      gamma_h <- drop(maximum_margin_summary$classifier_maps[[as.character(h)]])
+      f_h <- drop(maximum_margin_summary$reconstruction_maps[[as.character(h)]])
+      paraview_fields[[glue::glue("beta_H{h}")]] <- beta_h
+      paraview_fields[[glue::glue("gamma_H{h}")]] <- gamma_h
+      paraview_fields[[glue::glue("f_H{h}")]] <- f_h
+      paraview_fields[[glue::glue("beta_CTRL_unit_H{h}")]] <- mass_unit(beta_h)
+      paraview_fields[[glue::glue("gamma_CTRL_unit_H{h}")]] <- mass_unit(gamma_h)
+      paraview_fields[[glue::glue("f_CTRL_unit_H{h}")]] <- mass_unit(f_h)
+    }
+    paraview_dir <- file.path(aggregate_dir, "paraview")
+    dir.create(paraview_dir, recursive = TRUE, showWarnings = FALSE)
+    write_tetrahedral_vtu(
+      file.path(paraview_dir, "maximum_margin_comparison.vtu"),
+      points,
+      elements,
+      paraview_fields
+    )
+    file.copy(
+      "tests/brain/paraview/maximum_margin_comparison.py",
+      file.path(paraview_dir, "maximum_margin_comparison.py"),
+      overwrite = TRUE
+    )
+    writeLines(c(
+      "Maximum-margin ParaView comparison",
+      "",
+      "Run maximum_margin_comparison.py from ParaView's Python Shell, or launch:",
+      glue::glue("paraview --script={file.path(paraview_dir, 'maximum_margin_comparison.py')}"),
+      "",
+      "The script opens a 3 x 4 linked-camera scene and writes a PVSM state plus a PNG preview.",
+      "Rows: primary SVM slider loading f = R D q, then classifier controls gamma and beta.",
+      "Columns: H = 3, 4, 5, 6. Scene fields are FEM-mass normalized and oriented positive toward CTRL.",
+      "The VTU also contains the raw beta_H*, gamma_H*, and f_H* coefficient arrays."
+    ), file.path(paraview_dir, "README.txt"))
   }
-  paraview_fields <- list()
-  for (h in 3:6) {
-    beta_h <- drop(beta_coefficients[[as.character(h)]])
-    gamma_h <- drop(maximum_margin_summary$classifier_maps[[as.character(h)]])
-    f_h <- drop(maximum_margin_summary$reconstruction_maps[[as.character(h)]])
-    paraview_fields[[glue::glue("beta_H{h}")]] <- beta_h
-    paraview_fields[[glue::glue("gamma_H{h}")]] <- gamma_h
-    paraview_fields[[glue::glue("f_H{h}")]] <- f_h
-    paraview_fields[[glue::glue("beta_CTRL_unit_H{h}")]] <- mass_unit(beta_h)
-    paraview_fields[[glue::glue("gamma_CTRL_unit_H{h}")]] <- mass_unit(gamma_h)
-    paraview_fields[[glue::glue("f_CTRL_unit_H{h}")]] <- mass_unit(f_h)
-  }
-  paraview_dir <- file.path(aggregate_dir, "paraview")
-  dir.create(paraview_dir, recursive = TRUE, showWarnings = FALSE)
-  write_tetrahedral_vtu(
-    file.path(paraview_dir, "maximum_margin_comparison.vtu"),
-    points,
-    elements,
-    paraview_fields
-  )
-  file.copy(
-    "tests/brain/paraview/maximum_margin_comparison.py",
-    file.path(paraview_dir, "maximum_margin_comparison.py"),
-    overwrite = TRUE
-  )
-  writeLines(c(
-    "Maximum-margin ParaView comparison",
-    "",
-    "Run maximum_margin_comparison.py from ParaView's Python Shell, or launch:",
-    glue::glue("paraview --script={file.path(paraview_dir, 'maximum_margin_comparison.py')}"),
-    "",
-    "The script opens a 3 x 4 linked-camera scene and writes a PVSM state plus a PNG preview.",
-    "Rows: primary SVM slider loading f = R D q, then classifier controls gamma and beta.",
-    "Columns: H = 3, 4, 5, 6. Scene fields are FEM-mass normalized and oriented positive toward CTRL.",
-    "The VTU also contains the raw beta_H*, gamma_H*, and f_H* coefficient arrays."
-  ), file.path(paraview_dir, "README.txt"))
 
   margin_plot <- ggplot(
     maximum_margin_summary$diagnostics,
@@ -669,15 +689,21 @@ write_json(
   list(
     schema_version = 2L,
     requested = requested,
+    dimension_reducer = complete_reducer,
     run_complete = TRUE,
     status = if (all_gcv_selections_interior) "complete" else "complete_with_GCV_boundary_selection",
     validation_status = unique(vapply(all_evaluations, function(value) {
       as.character(value$provenance$validation_status)
     }, character(1))),
     all_production_GCV_selections_interior = all_gcv_selections_interior,
-    first_H_with_perfect_in_sample_separation = if (!is.null(separation) && any(separation$perfect_separation)) {
+    first_H_with_perfect_in_sample_separation = if (is.null(separation)) {
+      "not_evaluated"
+    } else if (any(separation$perfect_separation)) {
       as.character(min(separation$prefix_components[separation$perfect_separation]))
-    } else "not_evaluated",
+    } else "none_up_to_H6",
+    H3_hard_margin_separable = if (is.null(maximum_margin_summary)) {
+      "not_evaluated"
+    } else isTRUE(maximum_margin_summary$fits[["3"]]$hard_margin),
     prefix_diagnostics = "computed_from_single_H6_fit",
     separation_orientation = list(
       score_positive_class = "CTRL",
@@ -706,7 +732,9 @@ write_json(
         FEM_mass_matrix = "not_used"
       )
     },
-    beta_stability = if (is.null(beta_stability_summary)) {
+    beta_stability = if (identical(complete_reducer, "fPCR")) {
+      "not_requested_for_fPCR_slider_comparator"
+    } else if (is.null(beta_stability_summary)) {
       "requires_H6_fit"
     } else {
       list(
@@ -720,17 +748,26 @@ write_json(
       "requires_H6_fit"
     } else {
       list(
-        classifier = "linear_C_SVM_cost_1e6_verified_hard_margin",
+        classifier = if (all(maximum_margin_summary$diagnostics$hard_margin)) {
+          "linear_C_SVM_cost_1e6_verified_hard_margin"
+        } else "linear_C_SVM_cost_1e6_with_recorded_soft_margin_prefixes",
         score_scaling = "componentwise_training_mean_and_standard_deviation_prefix_consistent",
         class_orientation = "positive_is_CTRL_matching_paper_response_coding",
         auc_positive_class = "CTRL",
         sensitivity_class = "SCHZ",
         specificity_class = "CTRL",
         reconstruction_loading = "R_H_times_score_SD_times_unit_standardized_SVM_normal",
-        classifier_coefficient = "W_H_times_inverse_RtW_times_score_space_boundary_normal",
+        classifier_coefficient = if (identical(complete_reducer, "R1-fPLS")) {
+          "W_H_times_inverse_RtW_times_score_space_boundary_normal"
+        } else "not_computed_for_fPCR_slider_comparator",
         spatial_metric = "tetrahedral_P1_FEM_mass_correlation_with_H3",
-        paraview_bundle = "aggregate/h_stability/paraview/maximum_margin_comparison.vtu_and_scene_script",
-        classifier_formula_max_abs_error_against_native_beta = classifier_formula_max_abs_error
+        hard_margin_at_H3 = isTRUE(maximum_margin_summary$fits[["3"]]$hard_margin),
+        paraview_bundle = if (identical(complete_reducer, "R1-fPLS")) {
+          "aggregate/h_stability/paraview/maximum_margin_comparison.vtu_and_scene_script"
+        } else "not_generated_for_fPCR_comparator",
+        classifier_formula_max_abs_error_against_native_beta = if (identical(
+          complete_reducer, "R1-fPLS"
+        )) classifier_formula_max_abs_error else "not_applicable_fPCR"
       )
     },
     distinct_fit_prefix_invariance = "not_applicable_single_progressive_fit",

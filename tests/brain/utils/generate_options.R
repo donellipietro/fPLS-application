@@ -23,12 +23,15 @@ generate_options <- function(test_suite, name_main_test, path_queue) {
 
   cfg <- load_config()
   is_cv <- name_main_test == "out_of_sample"
-  is_slider_resampling <- name_main_test == "slider_resampling"
+  is_slider_resampling <- name_main_test %in% c("slider_resampling", "fpcr_slider_resampling")
+  is_fpcr <- name_main_test %in% c("fpcr_h_stability", "fpcr_slider_resampling")
   uses_splits <- is_cv || is_slider_resampling
-  models <- brain_model_catalog(include_fpcr = is_cv)
+  models <- if (is_fpcr) {
+    list(names = "fPCR", labels = "fPCR", colors = "#2f855a")
+  } else brain_model_catalog(include_fpcr = is_cv)
   fit_native <- uses_splits || (name_main_test != "smoke_overall_mean" && !SMOKE_TEST)
   n_comp <- if (is_cv && SMOKE_TEST) 1L else if (is_slider_resampling && SMOKE_TEST) 3L else if (name_main_test %in% c(
-    "h_stability", "slider_resampling", "out_of_sample"
+    "h_stability", "slider_resampling", "fpcr_h_stability", "fpcr_slider_resampling", "out_of_sample"
   )) 6L else 3L
   n_folds <- if (uses_splits) {
     if (SMOKE_TEST) 2L else as.integer(Sys.getenv("FPLS_CV_FOLDS", unset = "5"))
@@ -141,7 +144,7 @@ generate_options <- function(test_suite, name_main_test, path_queue) {
         value <- options
         value$cross_validation$repeat_index <- repeat_index
         value$cross_validation$fold_index <- fold_index
-        prefix <- if (is_slider_resampling) "slider_resampling" else "out_of_sample"
+        prefix <- name_main_test
         value$name_test <- glue::glue("{prefix}_r{sprintf('%02d', repeat_index)}_f{sprintf('%02d', fold_index)}")
         value
       })
@@ -150,7 +153,7 @@ generate_options <- function(test_suite, name_main_test, path_queue) {
     options$name_test <- glue::glue("{name_main_test}_H{n_comp}")
     options$output <- list(
       write_reconstructions = TRUE,
-      write_beta = TRUE,
+      write_beta = !is_fpcr,
       retain_native_inputs = TRUE
     )
     options_list <- list(options)

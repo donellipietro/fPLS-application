@@ -103,3 +103,10 @@ CTRL-oriented map is compared with the accepted complete-data H=3 slider using t
 mass correlation and relative mass error, without post-hoc sign alignment. Because the full-data
 reference overlaps every training subset, this is descriptive resampling stability rather than
 independent validation or predictive performance.
+
+The optional fPCR comparator repeats the same split indices and slider construction in separate
+`fpcr_h_stability` and `fpcr_slider_resampling` targets. Each fPCR training slider is compared only
+with the complete-data fPCR H=3 slider. fPCR and R1-fPLS maps are never treated as interchangeable;
+their resampling summaries can be contrasted as paired method-specific stability diagnostics.
+Because fPCR does not use Y to choose its components, H=3 hard-margin separation is recorded rather
+than required, and any fixed-cost soft-margin slider is labelled accordingly.

@@ -77,8 +77,8 @@ For setup details and machine profiles, start from the root
 
 ## Suites And Outputs
 
-- **Bundled application suite:** `tests/brain` runs the complete-data R1-fPLS diagnostics
-  and repeated delete-one-fold training-sample stability of the H=3 slider loading.
+- **Bundled application suite:** `tests/brain` runs complete-data and repeated delete-one-fold
+  H=3 slider-stability diagnostics for R1-fPLS and its separately provenance-labelled fPCR comparator.
 - **Generated output roots:** the active profile controls result, image, test
   data, tmp, queue, log, build, dependency, and C++ paths.
 - **Cleanup and inspection:** `make clean`, `make clean_test`, `make

@@ -6,7 +6,7 @@ The application compares control and schizophrenia groups using imputed brain co
 
 ## Analysis Scope
 
-- Fit native R1-fPLS on the 3D brain mesh with functionally centered data, progressive component prefixes, and explicitly controlled GCV grids, probe counts, and seeds.
+- Fit native R1-fPLS and the fPCR comparator on the 3D brain mesh with functionally centered data, progressive component prefixes, and explicitly controlled GCV grids, probe counts, and seeds.
 - Use the application-expanded GCV grid `10^(-15:2)` for the functional mean, fPLS, and fPCA. It contains the simulation grid and the historical mean value `1e-2`; its lower extension follows controlled H=6 runs selecting `1e-9` and then `1e-12` for fPLS loading 2. A production boundary selection is warned, recorded, and labelled in run status without terminating the analysis. For each boundary-selected fPLS loading, the native fit saves the full candidate-wise GCV curve plus both the fitted selection and the replayed numerical minimum in `fpls_loading_gcv.csv`; a replay difference is diagnostic and nonfatal.
 - Fit a single sequential `H = 6` model, report prefix-wise reconstructed X variance, Y variance, and X--Y cross-covariance using the observation-location Frobenius definitions from the simulation study, and verify `H = 3` as the first prefix with perfect in-sample separation.
 - Use the linear SVM only as a geometric construction on standardized fPLS scores. The primary interpretation map is the slider loading `f_H = R_H D_H q_H`; compare only `H = 4:6` with the `H = 3` reference through the tetrahedral FEM mass correlation `rho_H` and relative mass error `e_H`.
@@ -106,6 +106,19 @@ Production outputs are written to `results/brain/aggregate/slider_resampling/`. 
 fold diagnostics, the H-minimum distribution, every training-versus-complete slider comparison,
 descriptive summaries, regularization/convergence provenance, and resource measurements.
 
+The fPCR comparator uses two separate targets so it cannot overwrite or trigger refits of the
+accepted R1-fPLS analysis. First fit and aggregate one complete-data H=6 fPCR reference, then run
+the same 10-by-5 training subsets:
+
+```sh
+make run_test TEST_SUITE=brain TEST_NAME=fpcr_h_stability
+make run_test TEST_SUITE=brain TEST_NAME=fpcr_slider_resampling
+```
+
+The fPCR slider uses the same fixed-`C = 1e6` definition and FEM-mass `rho_H3`/`e_H3` metrics.
+Hard-margin status is recorded rather than assumed: if H=3 is not linearly separable for fPCR, the
+fixed-cost soft-margin slider remains comparable but is explicitly labelled as such.
+
 ## Torque Cluster
 
 The `hpc-torque` profile is the Kami runtime and is aligned with canonical testbench runtime commit
@@ -121,6 +134,9 @@ PATH_APPLICATION_DATA=/cluster/path/to/brain-data make build PROFILE=hpc-torque
 make run_test TEST_SUITE=brain TEST_NAME=h_stability
 # After h_stability aggregation completes successfully:
 make run_test TEST_SUITE=brain TEST_NAME=slider_resampling
+# Optional fPCR comparator, run in this order:
+make run_test TEST_SUITE=brain TEST_NAME=fpcr_h_stability
+make run_test TEST_SUITE=brain TEST_NAME=fpcr_slider_resampling
 ```
 
 Production fits require a clean committed application worktree. Preview the compile, queue partitioning, PBS resources, and dependent aggregation jobs without submission:
@@ -128,11 +144,12 @@ Production fits require a clean committed application worktree. Preview the comp
 ```sh
 PBS_COMPILE_DRY_RUN=1 PBS_DRY_RUN=1 make run_test TEST_SUITE=brain TEST_NAME=h_stability
 PBS_COMPILE_DRY_RUN=1 PBS_DRY_RUN=1 make run_test TEST_SUITE=brain TEST_NAME=slider_resampling
+PBS_COMPILE_DRY_RUN=1 PBS_DRY_RUN=1 make run_test TEST_SUITE=brain TEST_NAME=fpcr_h_stability
+PBS_COMPILE_DRY_RUN=1 PBS_DRY_RUN=1 make run_test TEST_SUITE=brain TEST_NAME=fpcr_slider_resampling
 ```
 
 The application defaults to at most 15 workers, one CPU and 16 GB per worker, with a
-12-hour wall-time request. `PBS_MAX_JOBS=50` requests one worker per outer split (each runs
-the two reducers sequentially) when the scheduler
+12-hour wall-time request. `PBS_MAX_JOBS=50` requests one worker per training split when the scheduler
 policy permits it. `PBS_QUEUE`, `PBS_ACCOUNT`, `PBS_MEM`, and `PBS_TIME` are available as
 run-time overrides. Preview submissions with `PBS_DRY_RUN=1`.
 

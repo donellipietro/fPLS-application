@@ -61,6 +61,31 @@ stopifnot(
   identical(result$cross_validation$test_data_used, FALSE)
 )
 
+fpcr_model <- model
+fpcr_model$MODE <- "fPCR"
+fpcr_model$results$fpca_lambdas <- matrix(0.01, 3L, 1L)
+fpcr_result <- suppressWarnings(evaluate_slider_resampling(fpcr_model, data, options))
+stopifnot(
+  identical(fpcr_result$dimension_reducer, "fPCR"),
+  identical(length(fpcr_result$slider_h3), 3L),
+  isTRUE(all.equal(fpcr_result$fpca_lambda, rep(0.01, 3L)))
+)
+fpcr_complete <- suppressWarnings(maximum_margin_prefix_sensitivity(
+  scores = scores,
+  x_loadings = rbind(diag(3), 0),
+  x_directions = rbind(diag(3), 0),
+  labels = labels,
+  points = rbind(c(0, 0, 0), c(1, 0, 0), c(0, 1, 0), c(0, 0, 1)),
+  elements = matrix(1:4, nrow = 1L),
+  require_hard_margin = FALSE,
+  compute_classifier_maps = FALSE
+))
+stopifnot(
+  is.null(fpcr_complete$classifier_maps),
+  identical(length(fpcr_complete$reconstruction_maps), 1L),
+  isTRUE(fpcr_complete$fits[["3"]]$hard_margin)
+)
+
 summary <- slider_resampling_summary(data.frame(
   mass_correlation = c(0.8, 0.9),
   relative_mass_error = c(0.4, 0.6)
@@ -152,6 +177,46 @@ stopifnot(
   aggregated$comparable_H3_fits == 2L,
   isTRUE(aggregated$all_test_data_unused),
   isTRUE(all.equal(aggregated$comparisons$mass_correlation, c(1, 1)))
+)
+
+fpcr_reference_dir <- file.path(
+  root, "results", "brain", "aggregate", "fpcr_h_stability", "maximum_margin_maps"
+)
+dir.create(fpcr_reference_dir, recursive = TRUE)
+jsonlite::write_json(
+  list(
+    schema_version = 2L,
+    run_complete = TRUE,
+    status = "complete",
+    validation_status = "complete_data_production",
+    dimension_reducer = "fPCR",
+    first_H_with_perfect_in_sample_separation = "not_evaluated",
+    H3_hard_margin_separable = FALSE
+  ),
+  file.path(dirname(fpcr_reference_dir), "application_run_status.json"),
+  auto_unbox = TRUE
+)
+write.csv(
+  data.frame(coefficient = c(1, 0, 0, 0)),
+  file.path(fpcr_reference_dir, "reconstruction_loading_h3.csv"),
+  row.names = FALSE
+)
+fpcr_evaluation <- evaluation
+fpcr_evaluation$dimension_reducer <- "fPCR"
+fpcr_evaluation$h3_hard_margin_separable <- FALSE
+fpcr_evaluation_2 <- fpcr_evaluation
+fpcr_evaluation_2$cross_validation$fold_index <- 2L
+fpcr_aggregated <- aggregate_slider_resampling(
+  list(fpcr_evaluation, fpcr_evaluation_2),
+  file.path(root, "fpcr_aggregate"),
+  file.path(root, "fpcr_images"),
+  list(PATH_RESULTS = file.path(root, "results"), PATH_APPLICATION_DATA = "unused")
+)
+stopifnot(
+  identical(fpcr_aggregated$dimension_reducer, "fPCR"),
+  identical(fpcr_aggregated$complete_data_reference_target, "fpcr_h_stability"),
+  identical(fpcr_aggregated$comparable_H3_fits, 2L),
+  !isTRUE(fpcr_aggregated$all_H3_hard_margin_separable)
 )
 unlink(root, recursive = TRUE)
 
