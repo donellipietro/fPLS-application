@@ -61,6 +61,32 @@ stopifnot(
   identical(result$cross_validation$test_data_used, FALSE)
 )
 
+held_out_model <- model
+held_out_model$results$Y_loadings <- matrix(c(0, 0, 0.5), nrow = 1L)
+held_out_model$results$Y_hat <- list(
+  rep(0, nrow(scores)), rep(0, nrow(scores)), 0.5 * scores[, 3]
+)
+held_out_model$results$provenance$input_md5 <- c(input = "x")
+held_out_model$results$provenance$application_commit <- "synthetic-commit"
+held_out_data <- list(
+  X = rbind(scores, scores[c(1L, 5L), , drop = FALSE]),
+  labels = factor(c(as.character(labels), "CTRL", "SCHZ"), levels = c("CTRL", "SCHZ")),
+  input_md5 = c(input = "x")
+)
+held_out_evaluation <- result
+held_out_evaluation$provenance$application_commit <- "synthetic-commit"
+held_out_evaluation$n_comp <- 3L
+held_out_evaluation$cross_validation$train_indices <- 1:8
+held_out_evaluation$cross_validation$omitted_indices <- 9:10
+held_out <- slider_test_explained_structure(held_out_model, held_out_data, held_out_evaluation)
+stopifnot(
+  identical(held_out$retained_components, 1:3),
+  identical(held_out$test_subjects, rep(2L, 3L)),
+  isTRUE(all.equal(held_out$X_variance_explained[3], 1)),
+  isTRUE(all.equal(held_out$Y_variance_explained[3], 1)),
+  isTRUE(all.equal(held_out$XY_cross_covariance_explained[3], 1))
+)
+
 fpcr_model <- model
 fpcr_model$MODE <- "fPCR"
 fpcr_model$results$fpca_lambdas <- matrix(0.01, 3L, 1L)
@@ -109,6 +135,41 @@ stopifnot(
 )
 
 root <- tempfile("slider-resampling-check-")
+postprocess_evaluation <- held_out_evaluation
+postprocess_evaluation$scenario <- "synthetic_r01_f01"
+postprocess_evaluation_2 <- postprocess_evaluation
+postprocess_evaluation_2$scenario <- "synthetic_r01_f02"
+postprocess_evaluation_2$cross_validation$fold_index <- 2L
+for (value in list(postprocess_evaluation, postprocess_evaluation_2)) {
+  model_dir <- file.path(
+    root, "results", "brain", "slider_resampling", value$scenario, "batch_1"
+  )
+  dir.create(model_dir, recursive = TRUE)
+  model_R1_fPLS <- held_out_model
+  save(model_R1_fPLS, file = file.path(model_dir, "batch_1_fitted_model_R1_fPLS.RData"))
+}
+load_brain_application_data <- function(data_dir) held_out_data
+postprocessed <- aggregate_slider_test_explained_structure(
+  list(postprocess_evaluation, postprocess_evaluation_2),
+  "slider_resampling",
+  file.path(root, "postprocess_aggregate"),
+  file.path(root, "postprocess_images"),
+  list(PATH_RESULTS = file.path(root, "results"), PATH_APPLICATION_DATA = "unused")
+)
+stopifnot(
+  nrow(postprocessed$values) == 6L,
+  nrow(postprocessed$summary) == 9L,
+  identical(postprocessed$native_application_commit, "synthetic-commit"),
+  file.exists(file.path(
+    root, "postprocess_aggregate", "slider_resampling_test_explained_structure_by_fold.csv"
+  )),
+  file.exists(file.path(
+    root, "postprocess_aggregate", "slider_resampling_test_explained_structure_summary.csv"
+  )),
+  file.exists(file.path(
+    root, "postprocess_images", "slider_resampling_test_explained_structure_by_fold.png"
+  ))
+)
 full_data <- list(
   X = rbind(scores, scores),
   labels = factor(rep(labels, 2L), levels = c("CTRL", "SCHZ")),

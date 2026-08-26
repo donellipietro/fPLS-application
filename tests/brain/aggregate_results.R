@@ -172,6 +172,9 @@ if (requested %in% c("slider_resampling", "fpcr_slider_resampling")) {
   }
   image_dir <- file.path(cfg$PATH_IMAGES, test_suite, "aggregate", requested)
   resampling <- aggregate_slider_resampling(all_evaluations, aggregate_dir, image_dir, cfg)
+  test_structure <- aggregate_slider_test_explained_structure(
+    all_evaluations, requested, aggregate_dir, image_dir, cfg
+  )
   if (!resampling$all_H3_hard_margin_separable) {
     run_status <- paste0(run_status, "_with_nonseparable_H3_training_folds")
   }
@@ -193,8 +196,8 @@ if (requested %in% c("slider_resampling", "fpcr_slider_resampling")) {
         dimension_reducer = resampling$dimension_reducer,
         native_fit = paste0("one_progressive_", resampling$dimension_reducer, "_H6_fit_per_training_fold"),
         stratification = "class_labels_used_only_to_construct_fold_assignment",
-        omitted_subjects_usage = "define_the_training_perturbation_only",
-        test_predictions_or_metrics = "not_computed",
+        omitted_subjects_usage = "excluded_from_fit_and_slider_stability_then_used_only_for_postfit_structural_evaluation",
+        test_predictions_or_metrics = "held_out_X_Y_and_XY_explained_structure_without_test_tuning",
         complete_data_reference = paste0(
           "accepted_H3_slider_from_", resampling$complete_data_reference_target
         ),
@@ -218,7 +221,27 @@ if (requested %in% c("slider_resampling", "fpcr_slider_resampling")) {
         prefixes = 1:6,
         output = "slider_resampling_Hmin_distribution.csv"
       ),
-      all_test_data_unused = resampling$all_test_data_unused,
+      held_out_explained_structure = list(
+        unit = "one_curve_per_repeat_and_test_fold",
+        prefixes = 1:6,
+        metrics = c(
+          "X_variance_explained", "Y_variance_explained",
+          "XY_cross_covariance_explained"
+        ),
+        norm = "observation_location_Frobenius_matching_simulation_study",
+        FEM_mass_matrix = "not_used",
+        predictor_centering_and_projection = "training_fit_only",
+        response_coding = "training_fold_prevalence_weights_applied_to_test_labels",
+        response_prediction = "native_training_fitted_response_loadings_verified_against_training_Yhat",
+        test_tuning_or_selection = "none",
+        negative_values = "retained_not_truncated",
+        fold_curves = "slider_resampling_test_explained_structure_by_fold.csv",
+        descriptive_summary = "slider_resampling_test_explained_structure_summary.csv",
+        native_fit_application_commit = test_structure$native_application_commit,
+        postprocessing_application_commit = trimws(system2("git", c("rev-parse", "HEAD"), stdout = TRUE))[1]
+      ),
+      all_test_data_unused_for_fitting_and_slider_stability = resampling$all_test_data_unused,
+      held_out_test_data_used_for_postfit_explained_structure = TRUE,
       all_production_GCV_selections_interior = resampling$all_GCV_selections_interior,
       uncertainty = "descriptive_overlapping_training_sets_not_independent_replicates"
     ),

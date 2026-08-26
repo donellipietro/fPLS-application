@@ -3,6 +3,16 @@
 # - Desc: Training-sample stability of the complete-data H=3 slider loading.
 # = ========================================================================== =
 
+slider_resampling_reducer <- function(evaluation) {
+  reducer <- evaluation$dimension_reducer
+  if (is.null(reducer)) reducer <- evaluation$provenance$model
+  if (identical(reducer, "R1_fPLS")) reducer <- "R1-fPLS"
+  if (is.null(reducer) || !reducer %in% c("R1-fPLS", "fPCR")) {
+    stop("slider-resampling evaluation has no recognized dimension reducer")
+  }
+  reducer
+}
+
 evaluate_slider_resampling <- function(model, data, test_options) {
   if (!model$MODE %in% c("R1_fPLS", "fPCR")) stop("unsupported slider-resampling reducer")
   reducer <- if (identical(model$MODE, "fPCR")) "fPCR" else "R1-fPLS"
@@ -123,6 +133,215 @@ slider_resampling_summary <- function(values) {
     minimum = c(min(values$mass_correlation), min(values$relative_mass_error)),
     maximum = c(max(values$mass_correlation), max(values$relative_mass_error)),
     training_fits = nrow(values)
+  )
+}
+
+slider_test_explained_structure <- function(model, full_data, evaluation) {
+  reducer <- slider_resampling_reducer(evaluation)
+  expected_mode <- if (identical(reducer, "fPCR")) "fPCR" else "R1_fPLS"
+  if (!identical(model$MODE, expected_mode) || !identical(model$status, 0L)) {
+    stop("saved slider-resampling model does not match its evaluation")
+  }
+  train_indices <- as.integer(evaluation$cross_validation$train_indices)
+  test_indices <- as.integer(evaluation$cross_validation$omitted_indices)
+  all_indices <- seq_len(nrow(full_data$X))
+  if (anyDuplicated(c(train_indices, test_indices)) ||
+      !setequal(c(train_indices, test_indices), all_indices)) {
+    stop("slider-resampling train and omitted indices do not partition the application data")
+  }
+  model_md5 <- unlist(model$results$provenance$input_md5, use.names = TRUE)
+  data_md5 <- unlist(full_data$input_md5, use.names = TRUE)
+  if (!isTRUE(all.equal(
+    model_md5[sort(names(model_md5))], data_md5[sort(names(data_md5))]
+  ))) {
+    stop("saved slider-resampling model input provenance does not match the application data")
+  }
+  if (!identical(
+    as.character(model$results$provenance$application_commit),
+    as.character(evaluation$provenance$application_commit)
+  )) {
+    stop("saved slider-resampling model and evaluation have different application commits")
+  }
+
+  train_response <- recoded_response(full_data$labels[train_indices])
+  test_labels <- factor(
+    as.character(full_data$labels[test_indices]), levels = c("CTRL", "SCHZ")
+  )
+  train_counts <- table(factor(as.character(train_response$labels), levels = c("CTRL", "SCHZ")))
+  p_ctrl <- unname(train_counts[["CTRL"]] / sum(train_counts))
+  p_schz <- unname(train_counts[["SCHZ"]] / sum(train_counts))
+  test_Y <- matrix(ifelse(
+    test_labels == "CTRL", sqrt(p_schz / p_ctrl), -sqrt(p_ctrl / p_schz)
+  ), ncol = 1L)
+
+  training_mean <- drop(model$results$functional_mean_locations)
+  directions <- model$results$X_space_directions
+  loadings <- model$results$X_loadings
+  train_X_centered <- sweep(
+    full_data$X[train_indices, , drop = FALSE], 2L, training_mean, "-",
+    check.margin = FALSE
+  )
+  test_X <- full_data$X[test_indices, , drop = FALSE]
+  test_X_centered <- sweep(test_X, 2L, training_mean, "-", check.margin = FALSE)
+  train_scores <- project_reducer_scores(train_X_centered, directions, loadings)
+  test_scores <- project_reducer_scores(test_X_centered, directions, loadings)
+  projection_error <- max(abs(train_scores - model$results$X_latent_scores))
+  if (!is.finite(projection_error) || projection_error > 1e-9) {
+    stop("saved slider-resampling model does not reproduce its training scores")
+  }
+
+  X_reconstruction <- matrix(0, nrow(test_X), ncol(test_X))
+  rows <- vector("list", as.integer(evaluation$n_comp))
+  for (h in seq_len(as.integer(evaluation$n_comp))) {
+    X_reconstruction <- X_reconstruction + tcrossprod(test_scores[, h], loadings[, h])
+    coefficients <- matrix(
+      as.numeric(model$results$Y_loadings[1, seq_len(h), drop = TRUE]), ncol = 1L
+    )
+    response_replay_error <- max(abs(
+      train_scores[, seq_len(h), drop = FALSE] %*% coefficients -
+        model$results$Y_hat[[h]]
+    ))
+    if (!is.finite(response_replay_error) || response_replay_error > 1e-9) {
+      stop("saved slider-resampling response loadings do not reproduce native fitted Y")
+    }
+    Y_fitted <- test_scores[, seq_len(h), drop = FALSE] %*% coefficients
+    X_fitted <- sweep(X_reconstruction, 2L, training_mean, "+", check.margin = FALSE)
+    metrics <- observation_explained_structure(
+      test_X, test_Y, list(X_fitted), list(Y_fitted)
+    )
+    rows[[h]] <- data.frame(
+      dimension_reducer = reducer,
+      repeat_index = evaluation$cross_validation$repeat_index,
+      fold_index = evaluation$cross_validation$fold_index,
+      retained_components = h,
+      test_subjects = length(test_indices),
+      X_variance_explained = metrics$X_variance_explained,
+      Y_variance_explained = metrics$Y_variance_explained,
+      XY_cross_covariance_explained = metrics$XY_cross_covariance_explained,
+      training_projection_max_abs_error = projection_error,
+      training_response_replay_max_abs_error = response_replay_error
+    )
+  }
+  do.call(rbind, rows)
+}
+
+aggregate_slider_test_explained_structure <- function(
+    evaluations, target, aggregate_dir, image_dir, cfg) {
+  dir.create(aggregate_dir, recursive = TRUE, showWarnings = FALSE)
+  full_data <- load_brain_application_data(cfg$PATH_APPLICATION_DATA)
+  values <- do.call(rbind, lapply(evaluations, function(evaluation) {
+    reducer <- slider_resampling_reducer(evaluation)
+    model_name <- if (identical(reducer, "fPCR")) "fPCR" else "R1_fPLS"
+    model_file <- file.path(
+      cfg$PATH_RESULTS, "brain", target, evaluation$scenario, "batch_1",
+      paste0("batch_1_fitted_model_", model_name, ".RData")
+    )
+    if (!file.exists(model_file)) stop("missing saved slider-resampling model: ", model_file)
+    model_environment <- new.env(parent = emptyenv())
+    load(model_file, envir = model_environment)
+    object_name <- paste0("model_", model_name)
+    if (!exists(object_name, envir = model_environment, inherits = FALSE)) {
+      stop("saved slider-resampling model file has no ", object_name)
+    }
+    result <- slider_test_explained_structure(
+      get(object_name, envir = model_environment, inherits = FALSE),
+      full_data,
+      evaluation
+    )
+    rm(model_environment)
+    result
+  }))
+  values <- values[order(
+    values$repeat_index, values$fold_index, values$retained_components
+  ), , drop = FALSE]
+
+  metric_names <- c(
+    "X_variance_explained", "Y_variance_explained", "XY_cross_covariance_explained"
+  )
+  long <- do.call(rbind, lapply(metric_names, function(metric) {
+    data.frame(
+      dimension_reducer = values$dimension_reducer,
+      repeat_index = values$repeat_index,
+      fold_index = values$fold_index,
+      retained_components = values$retained_components,
+      metric = metric,
+      value = values[[metric]]
+    )
+  }))
+  groups <- split(long, interaction(long$retained_components, long$metric, drop = TRUE))
+  summary <- do.call(rbind, lapply(groups, function(value) {
+    data.frame(
+      dimension_reducer = value$dimension_reducer[1],
+      retained_components = value$retained_components[1],
+      metric = value$metric[1],
+      mean = mean(value$value),
+      sd = sd(value$value),
+      median = median(value$value),
+      q25 = unname(quantile(value$value, 0.25)),
+      q75 = unname(quantile(value$value, 0.75)),
+      folds = nrow(value)
+    )
+  }))
+  summary <- summary[order(summary$metric, summary$retained_components), , drop = FALSE]
+
+  write.csv(
+    values,
+    file.path(aggregate_dir, "slider_resampling_test_explained_structure_by_fold.csv"),
+    row.names = FALSE
+  )
+  write.csv(
+    summary,
+    file.path(aggregate_dir, "slider_resampling_test_explained_structure_summary.csv"),
+    row.names = FALSE
+  )
+
+  dir.create(image_dir, recursive = TRUE, showWarnings = FALSE)
+  curve_plot <- ggplot(
+    long,
+    aes(
+      retained_components, value,
+      group = interaction(repeat_index, fold_index)
+    )
+  ) +
+    geom_line(alpha = 0.2, colour = "#4A5568", linewidth = 0.35) +
+    geom_ribbon(
+      data = summary,
+      aes(x = retained_components, ymin = q25, ymax = q75),
+      inherit.aes = FALSE,
+      fill = "#007C91", alpha = 0.18
+    ) +
+    geom_line(
+      data = summary,
+      aes(retained_components, median),
+      inherit.aes = FALSE,
+      colour = "#007C91", linewidth = 0.9
+    ) +
+    facet_wrap(~ metric, scales = "free_y") +
+    scale_x_continuous(breaks = sort(unique(long$retained_components))) +
+    labs(
+      x = "Retained components H",
+      y = "Held-out explained structure",
+      caption = "Thin lines: individual test folds; teal: median and interquartile range."
+    ) +
+    theme_bw()
+  ggsave(
+    plot_file(image_dir, "slider_resampling_test_explained_structure_by_fold"),
+    curve_plot,
+    width = 11,
+    height = 4.5,
+    dpi = 180
+  )
+
+  native_commits <- unique(vapply(evaluations, function(value) {
+    as.character(value$provenance$application_commit)
+  }, character(1)))
+  if (length(native_commits) != 1L) {
+    stop("held-out structural evaluation requires one native application commit")
+  }
+  list(
+    values = values,
+    summary = summary,
+    native_application_commit = native_commits[[1]]
   )
 }
 

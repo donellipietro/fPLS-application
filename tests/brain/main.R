@@ -118,7 +118,7 @@ if (!is.null(cached_data) &&
   )
   cat(if (is_cv) {
     if (identical(test_options$cross_validation$purpose, "interpretive_slider_stability")) {
-      "- Prepared slider-resampling training fold; omitted subjects will not be used\n"
+      "- Prepared slider-resampling training fold; omitted subjects are excluded from fitting\n"
     } else {
       "- Prepared raw training-only CV fold; native fit will estimate its functional mean\n"
     }

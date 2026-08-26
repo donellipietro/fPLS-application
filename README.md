@@ -10,7 +10,7 @@ The application compares control and schizophrenia groups using imputed brain co
 - Use the application-expanded GCV grid `10^(-15:2)` for the functional mean, fPLS, and fPCA. It contains the simulation grid and the historical mean value `1e-2`; its lower extension follows controlled H=6 runs selecting `1e-9` and then `1e-12` for fPLS loading 2. A production boundary selection is warned, recorded, and labelled in run status without terminating the analysis. For each boundary-selected fPLS loading, the native fit saves the full candidate-wise GCV curve plus both the fitted selection and the replayed numerical minimum in `fpls_loading_gcv.csv`; a replay difference is diagnostic and nonfatal.
 - Fit a single sequential `H = 6` model, report prefix-wise reconstructed X variance, Y variance, and X--Y cross-covariance using the observation-location Frobenius definitions from the simulation study, and verify `H = 3` as the first prefix with perfect in-sample separation.
 - Use the linear SVM only as a geometric construction on standardized fPLS scores. The primary interpretation map is the slider loading `f_H = R_H D_H q_H`; compare only `H = 4:6` with the `H = 3` reference through the tetrahedral FEM mass correlation `rho_H` and relative mass error `e_H`.
-- Assess sampling stability with 10 repeats of stratified five-fold delete-one-fold resampling. Each training subset fits one progressive `H = 6` R1-fPLS model, rechecks the first perfectly separating prefix, constructs `f_3` with the same fixed `C = 1e6` rule, and compares it with the accepted complete-data `f_3`. Omitted subjects are not projected, predicted, or scored.
+- Assess sampling stability with 10 repeats of stratified five-fold delete-one-fold resampling. Each training subset fits one progressive `H = 6` R1-fPLS model, rechecks the first perfectly separating prefix, constructs `f_3` with the same fixed `C = 1e6` rule, and compares it with the accepted complete-data `f_3`. The omitted fold is excluded from every fitted quantity and used only afterward for held-out explained-structure curves.
 - Record selected fPLS/fPCA lambdas, component iterations, objective/monotonicity diagnostics, non-finite/failure status, wall-clock time, peak RAM, input and native-binary MD5 checksums, runtime profile, and exact fdaPDE commits.
 
 Raw brain data and generated outputs are intentionally outside Git. The default local data path is the historical ignored application input folder:
@@ -84,17 +84,22 @@ VTU retains the unnormalized coefficient arrays.
 
 The reviewer-facing resampling study creates 50 training subsets: five stratified delete-one-fold
 splits by ten repeats, with one progressive H=6 R1-fPLS fit per subset. Class labels are used to
-construct the stratified fold assignment; after assignment, the omitted 20% defines the perturbation
-only and its predictors and labels are not passed to the fit/evaluation path, projected, or used for
-predictions or performance metrics.
-Consequently this is descriptive sampling stability, not out-of-sample validation; the complete-data
-reference overlaps each training subset.
+construct the stratified fold assignment. The omitted 20% is excluded from the native fit, GCV,
+centering, response recoding, score scaling, and slider construction. Slider stability remains a
+descriptive sampling analysis because its complete-data reference overlaps each training subset.
 
 Every fit re-estimates the functional mean, response coding, GCV penalties, score scaling, and
 fixed-`C = 1e6` CTRL-oriented H=3 slider using its training subjects only. Aggregation reports the
 distribution of the first perfectly separating training prefix and compares each available
 training `f_3` with the complete-data `f_3` through FEM mass `rho_H3` and relative error `e_H3`.
 The overlapping training subsets are descriptive resamples, not independent replicates.
+
+After fitting, the same saved models are also used for a separate held-out structural evaluation.
+Each omitted fold is projected with its training-only mean and reducer, producing one curve per fold
+for H=1:6 of reconstructed X variance, Y variance, and X--Y cross-covariance. These diagnostics use
+the observation-location Frobenius definitions from the simulation study, without a FEM mass matrix
+or test-set tuning. The individual fold curves, descriptive summaries, and figure are written as
+`slider_resampling_test_explained_structure_*` in the corresponding aggregate result/image folders.
 
 Run the reduced two-fold, H=3 plumbing check locally:
 

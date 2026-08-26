@@ -93,9 +93,8 @@ definitions. The FEM mass matrix is intentionally not used for these local-obser
 it remains the metric for comparing functional slider maps.
 
 The sampling-stability study uses 10 repeats of stratified five-fold delete-one-fold resampling.
-One sequential `H = 6` R1-fPLS model is fitted per training subset. The omitted subjects define the
-20% deletion only: labels are used to construct the stratified assignment, after which omitted
-predictors and labels are not passed to the fit/evaluation path, projected, predicted, or scored.
+One sequential `H = 6` R1-fPLS model is fitted per training subset. Labels define the stratified
+assignment; omitted predictors and labels are excluded from fitting and slider construction.
 Each training fit re-estimates its
 functional mean, prevalence-weighted response, GCV penalties, and score standardization, checks the
 first perfectly separating prefix, and constructs the H=3 slider with fixed `C = 1e6`. Its
@@ -110,3 +109,11 @@ with the complete-data fPCR H=3 slider. fPCR and R1-fPLS maps are never treated 
 their resampling summaries can be contrasted as paired method-specific stability diagnostics.
 Because fPCR does not use Y to choose its components, H=3 hard-margin separation is recorded rather
 than required, and any fixed-cost soft-margin slider is labelled accordingly.
+
+Both slider-resampling targets post-process their saved training-only models on the corresponding
+omitted fold. Test predictors are centered and projected with training-fitted quantities; test
+responses use the training-fold prevalence coding, and no test quantity affects fitting, GCV,
+component construction, or slider definition. For each repeat, fold, and H=1:6, the post-processing
+reports observation-location Frobenius X variance, Y variance, and X--Y cross-covariance explained.
+The 50 fold curves are descriptive repeated-split diagnostics and are not independent replicates;
+negative held-out explained values are retained rather than truncated.
