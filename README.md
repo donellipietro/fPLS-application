@@ -98,7 +98,9 @@ After fitting, the same saved models are also used for a separate held-out struc
 Each omitted fold is projected with its training-only mean and reducer, producing one curve per fold
 for H=1:6 of reconstructed X variance, Y variance, and X--Y cross-covariance. These diagnostics use
 the observation-location Frobenius definitions from the simulation study, without a FEM mass matrix
-or test-set tuning. The individual fold curves, descriptive summaries, and figure are written as
+or test-set tuning. Post-processing reads the complete-data `prepared_data.rds` and exported mesh
+from the accepted reference fit, so it does not depend on a separate copy of the private source inputs.
+The individual fold curves, descriptive summaries, and figure are written as
 `slider_resampling_test_explained_structure_*` in the corresponding aggregate result/image folders.
 
 Run the reduced two-fold, H=3 plumbing check locally:

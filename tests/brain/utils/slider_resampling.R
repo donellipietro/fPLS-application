@@ -194,9 +194,13 @@ slider_test_explained_structure <- function(model, full_data, evaluation) {
   rows <- vector("list", as.integer(evaluation$n_comp))
   for (h in seq_len(as.integer(evaluation$n_comp))) {
     X_reconstruction <- X_reconstruction + tcrossprod(test_scores[, h], loadings[, h])
-    coefficients <- matrix(
-      as.numeric(model$results$Y_loadings[1, seq_len(h), drop = TRUE]), ncol = 1L
-    )
+    coefficients <- if (identical(reducer, "fPCR")) {
+      qr.solve(train_scores[, seq_len(h), drop = FALSE], train_response$y)
+    } else {
+      matrix(
+        as.numeric(model$results$Y_loadings[1, seq_len(h), drop = TRUE]), ncol = 1L
+      )
+    }
     response_replay_error <- max(abs(
       train_scores[, seq_len(h), drop = FALSE] %*% coefficients -
         model$results$Y_hat[[h]]
@@ -228,7 +232,17 @@ slider_test_explained_structure <- function(model, full_data, evaluation) {
 aggregate_slider_test_explained_structure <- function(
     evaluations, target, aggregate_dir, image_dir, cfg) {
   dir.create(aggregate_dir, recursive = TRUE, showWarnings = FALSE)
-  full_data <- load_brain_application_data(cfg$PATH_APPLICATION_DATA)
+  reference_target <- if (identical(target, "fpcr_slider_resampling")) {
+    "fpcr_h_stability"
+  } else "h_stability"
+  full_data_file <- file.path(
+    cfg$PATH_RESULTS, "brain", reference_target, paste0(reference_target, "_H6"),
+    "batch_1", "prepared_data.rds"
+  )
+  if (!file.exists(full_data_file)) {
+    stop("held-out structural evaluation requires complete-data prepared_data.rds")
+  }
+  full_data <- readRDS(full_data_file)
   values <- do.call(rbind, lapply(evaluations, function(evaluation) {
     reducer <- slider_resampling_reducer(evaluation)
     model_name <- if (identical(reducer, "fPCR")) "fPCR" else "R1_fPLS"
@@ -379,12 +393,24 @@ aggregate_slider_resampling <- function(evaluations, aggregate_dir, image_dir, c
   }
   reference <- matrix(as.numeric(read.csv(reference_file, check.names = FALSE)[[1]]), ncol = 1L)
   reference_md5 <- unname(as.character(tools::md5sum(reference_file)))
-  mesh <- load_brain_mesh(cfg$PATH_APPLICATION_DATA)
-  if (nrow(reference) != nrow(mesh$nodes) || any(!is.finite(reference))) {
-    stop("complete-data H=3 slider map is incompatible with the configured brain mesh")
+  reference_model <- if (identical(reducer, "fPCR")) "fPCR" else "R1_fPLS"
+  reference_raw_dir <- file.path(
+    cfg$PATH_RESULTS, "brain", reference_target, paste0(reference_target, "_H6"),
+    "batch_1", "raw", reference_model
+  )
+  mesh_files <- file.path(reference_raw_dir, c("points.csv", "elements.csv"))
+  if (!all(file.exists(mesh_files))) {
+    stop("slider resampling requires the mesh exported by its complete-data reference")
   }
-  elements <- matrix(as.integer(mesh$elements), ncol = 4L)
-  volumes <- tetrahedral_volumes(mesh$nodes, elements)
+  nodes <- as.matrix(suppressWarnings(read.csv(mesh_files[[1]], check.names = FALSE)))
+  elements <- matrix(
+    as.integer(as.matrix(suppressWarnings(read.csv(mesh_files[[2]], check.names = FALSE)))),
+    ncol = 4L
+  )
+  if (nrow(reference) != nrow(nodes) || any(!is.finite(reference))) {
+    stop("complete-data H=3 slider map is incompatible with its exported mesh")
+  }
+  volumes <- tetrahedral_volumes(nodes, elements)
 
   fold_diagnostics <- do.call(rbind, lapply(evaluations, function(value) {
     data.frame(

@@ -87,6 +87,23 @@ stopifnot(
   isTRUE(all.equal(held_out$XY_cross_covariance_explained[3], 1))
 )
 
+held_out_fpcr_model <- held_out_model
+held_out_fpcr_model$MODE <- "fPCR"
+training_Y <- recoded_response(held_out_data$labels[1:8])$y
+held_out_fpcr_model$results$Y_hat <- lapply(1:3, function(h) {
+  scores[, seq_len(h), drop = FALSE] %*%
+    qr.solve(scores[, seq_len(h), drop = FALSE], training_Y)
+})
+held_out_fpcr_evaluation <- held_out_evaluation
+held_out_fpcr_evaluation$dimension_reducer <- "fPCR"
+held_out_fpcr <- slider_test_explained_structure(
+  held_out_fpcr_model, held_out_data, held_out_fpcr_evaluation
+)
+stopifnot(
+  isTRUE(all.equal(held_out_fpcr$Y_variance_explained[3], 1)),
+  isTRUE(all.equal(held_out_fpcr$XY_cross_covariance_explained[3], 1))
+)
+
 fpcr_model <- model
 fpcr_model$MODE <- "fPCR"
 fpcr_model$results$fpca_lambdas <- matrix(0.01, 3L, 1L)
@@ -148,7 +165,11 @@ for (value in list(postprocess_evaluation, postprocess_evaluation_2)) {
   model_R1_fPLS <- held_out_model
   save(model_R1_fPLS, file = file.path(model_dir, "batch_1_fitted_model_R1_fPLS.RData"))
 }
-load_brain_application_data <- function(data_dir) held_out_data
+complete_data_dir <- file.path(
+  root, "results", "brain", "h_stability", "h_stability_H6", "batch_1"
+)
+dir.create(complete_data_dir, recursive = TRUE)
+saveRDS(held_out_data, file.path(complete_data_dir, "prepared_data.rds"))
 postprocessed <- aggregate_slider_test_explained_structure(
   list(postprocess_evaluation, postprocess_evaluation_2),
   "slider_resampling",
@@ -207,10 +228,16 @@ write.csv(
   file.path(reference_dir, "reconstruction_loading_h3.csv"),
   row.names = FALSE
 )
-load_brain_mesh <- function(data_dir) list(
-  nodes = rbind(c(0, 0, 0), c(1, 0, 0), c(0, 1, 0), c(0, 0, 1)),
-  elements = matrix(1:4, nrow = 1L)
+reference_raw_dir <- file.path(
+  root, "results", "brain", "h_stability", "h_stability_H6", "batch_1", "raw", "R1_fPLS"
 )
+dir.create(reference_raw_dir, recursive = TRUE)
+write.csv(
+  rbind(c(0, 0, 0), c(1, 0, 0), c(0, 1, 0), c(0, 0, 1)),
+  file.path(reference_raw_dir, "points.csv"),
+  row.names = FALSE
+)
+write.csv(matrix(1:4, nrow = 1L), file.path(reference_raw_dir, "elements.csv"), row.names = FALSE)
 evaluation <- result
 evaluation$n_comp <- 3L
 evaluation$slider_h3 <- c(1, 0, 0, 0)
@@ -261,6 +288,14 @@ write.csv(
   data.frame(coefficient = c(1, 0, 0, 0)),
   file.path(fpcr_reference_dir, "reconstruction_loading_h3.csv"),
   row.names = FALSE
+)
+fpcr_reference_raw_dir <- file.path(
+  root, "results", "brain", "fpcr_h_stability", "fpcr_h_stability_H6", "batch_1", "raw", "fPCR"
+)
+dir.create(fpcr_reference_raw_dir, recursive = TRUE)
+file.copy(
+  file.path(reference_raw_dir, c("points.csv", "elements.csv")),
+  fpcr_reference_raw_dir
 )
 fpcr_evaluation <- evaluation
 fpcr_evaluation$dimension_reducer <- "fPCR"

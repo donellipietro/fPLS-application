@@ -232,7 +232,15 @@ if (requested %in% c("slider_resampling", "fpcr_slider_resampling")) {
         FEM_mass_matrix = "not_used",
         predictor_centering_and_projection = "training_fit_only",
         response_coding = "training_fold_prevalence_weights_applied_to_test_labels",
-        response_prediction = "native_training_fitted_response_loadings_verified_against_training_Yhat",
+        response_prediction = "training_only_prefix_coefficients_verified_against_native_Yhat",
+        full_data_source = paste0(
+          resampling$complete_data_reference_target, "_H6/batch_1/prepared_data.rds"
+        ),
+        mesh_source = paste0(
+          resampling$complete_data_reference_target, "_H6/batch_1/raw/",
+          if (identical(resampling$dimension_reducer, "fPCR")) "fPCR" else "R1_fPLS",
+          "/points.csv_and_elements.csv"
+        ),
         test_tuning_or_selection = "none",
         negative_values = "retained_not_truncated",
         fold_curves = "slider_resampling_test_explained_structure_by_fold.csv",
@@ -408,6 +416,23 @@ if (requested %in% c("h_stability", "fpcr_h_stability")) {
     )
     stop("Complete-data slider aggregation requires complete_data_production provenance")
   }
+  complete_resources <- do.call(rbind, lapply(all_evaluations, function(value) {
+    data.frame(
+      scenario = value$scenario,
+      dimension_reducer = value$dimension_reducer,
+      wall_seconds = as.numeric(value$execution_time),
+      peak_ram_mib = as.numeric(value$peak_ram_mib),
+      max_component_iterations = max(as.integer(value$iteration_count)),
+      any_component_hit_max_iter = any(as.logical(value$hit_max_iter)),
+      all_components_monotone = all(as.logical(value$monotone)),
+      all_components_finite = all(as.logical(value$finite_solution))
+    )
+  }))
+  write.csv(
+    complete_resources,
+    file.path(aggregate_dir, "complete_data_resources.csv"),
+    row.names = FALSE
+  )
 }
 
 if (!is.null(regularization_boundaries)) {
@@ -794,6 +819,9 @@ write_json(
       )
     },
     distinct_fit_prefix_invariance = "not_applicable_single_progressive_fit",
+    complete_data_resources = if (requested %in% c("h_stability", "fpcr_h_stability")) {
+      "complete_data_resources.csv"
+    } else "not_applicable",
     bootstrap_component_significance = "not_implemented_decision_gated"
   ),
   file.path(aggregate_dir, "application_run_status.json"),
