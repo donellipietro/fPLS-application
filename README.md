@@ -126,6 +126,16 @@ The fPCR slider uses the same fixed-`C = 1e6` definition and FEM-mass `rho_H3`/`
 Hard-margin status is recorded rather than assumed: if H=3 is not linearly separable for fPCR, the
 fixed-cost soft-margin slider remains comparable but is explicitly labelled as such.
 
+An isolated exploratory complete-data target checks whether fPCR separates only after retaining many
+more components. It fits H=20, keeps the functional-mean grid at `10^(-15:2)`, extends only the fPCA
+grid to `10^(-15:6)`, and saves every candidate-wise fPCA GCV curve. It reports both threshold
+separation of the prefix OLS response and hard-margin separation in score space for H=1:20. It does
+not overwrite or trigger the accepted H=6 fPCR reference or its resampling results:
+
+```sh
+make run_test TEST_SUITE=brain TEST_NAME=fpcr_h20_separation
+```
+
 ## Torque Cluster
 
 The `hpc-torque` profile is the Kami runtime and is aligned with canonical testbench runtime commit
@@ -144,6 +154,8 @@ make run_test TEST_SUITE=brain TEST_NAME=slider_resampling
 # Optional fPCR comparator, run in this order:
 make run_test TEST_SUITE=brain TEST_NAME=fpcr_h_stability
 make run_test TEST_SUITE=brain TEST_NAME=fpcr_slider_resampling
+# Optional exploratory high-component fPCR separation diagnostic:
+make run_test TEST_SUITE=brain TEST_NAME=fpcr_h20_separation
 ```
 
 Production fits require a clean committed application worktree. Preview the compile, queue partitioning, PBS resources, and dependent aggregation jobs without submission:
@@ -153,6 +165,7 @@ PBS_COMPILE_DRY_RUN=1 PBS_DRY_RUN=1 make run_test TEST_SUITE=brain TEST_NAME=h_s
 PBS_COMPILE_DRY_RUN=1 PBS_DRY_RUN=1 make run_test TEST_SUITE=brain TEST_NAME=slider_resampling
 PBS_COMPILE_DRY_RUN=1 PBS_DRY_RUN=1 make run_test TEST_SUITE=brain TEST_NAME=fpcr_h_stability
 PBS_COMPILE_DRY_RUN=1 PBS_DRY_RUN=1 make run_test TEST_SUITE=brain TEST_NAME=fpcr_slider_resampling
+PBS_COMPILE_DRY_RUN=1 PBS_DRY_RUN=1 make run_test TEST_SUITE=brain TEST_NAME=fpcr_h20_separation
 ```
 
 The application defaults to at most 15 workers, one CPU and 16 GB per worker, with a

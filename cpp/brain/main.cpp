@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <iterator>
 #include <limits>
 #include <stdexcept>
 #include <string>
@@ -24,6 +25,8 @@ struct explicit_edf_fpca_fit {
   matrix_t fn;
   matrix_t scores;
   matrix_t lambdas;
+  matrix_t gcv_edf;
+  matrix_t gcv_scores;
   std::vector<double> loading_norms;
   std::vector<std::vector<double>> objective_histories;
   std::vector<int> iteration_counts;
@@ -33,6 +36,8 @@ struct explicit_edf_fpca_fit {
   const matrix_t &Fn() const { return fn; }
   const matrix_t &S() const { return scores; }
   const matrix_t &lambda() const { return lambdas; }
+  const matrix_t &gcv_effective_degrees_of_freedom() const { return gcv_edf; }
+  const matrix_t &gcv() const { return gcv_scores; }
   const std::vector<double> &loadings_norm() const { return loading_norms; }
   const std::vector<std::vector<double>> &objective_history() const {
     return objective_histories;
@@ -193,6 +198,10 @@ explicit_edf_fpca_fit fit_fpca_explicit_edf(
   result.fn.resize(X.cols(), n_comp);
   result.scores.resize(X.rows(), n_comp);
   result.lambdas.resize(n_comp, 1);
+  result.gcv_edf = matrix_t::Constant(
+      n_comp, lambda_grid.size(), std::numeric_limits<double>::quiet_NaN());
+  result.gcv_scores = matrix_t::Constant(
+      n_comp, lambda_grid.size(), std::numeric_limits<double>::quiet_NaN());
   result.loading_norms.resize(n_comp);
   result.objective_histories.resize(n_comp);
   result.iteration_counts.resize(n_comp);
@@ -285,10 +294,21 @@ explicit_edf_fpca_fit fit_fpca_explicit_edf(
                 .squaredNorm();
         if (!std::isfinite(value))
           throw std::runtime_error("fPCA GCV score is non-finite");
+        const auto position =
+            std::find(lambda_grid.begin(), lambda_grid.end(), lambda[0]);
+        if (position == lambda_grid.end())
+          throw std::runtime_error("fPCA GCV evaluated an unknown lambda");
+        const std::size_t index =
+            static_cast<std::size_t>(std::distance(lambda_grid.begin(), position));
+        result.gcv_edf(h, index) = explicit_edf(lambda);
+        result.gcv_scores(h, index) = value;
         return value;
       };
       GridSearch<1> optimizer;
       selected_lambda = optimizer.optimize(gcv, lambda_grid);
+      if (!result.gcv_edf.row(h).allFinite() ||
+          !result.gcv_scores.row(h).allFinite())
+        throw std::runtime_error("fPCA GCV curve is incomplete");
     } else {
       selected_lambda << fixed_lambda;
     }
@@ -720,6 +740,21 @@ int run_application(const json &params) {
                                                          : model.lambda()(0, h);
   }
   write_csv(output_file(output_dir, "fpca_lambdas.csv"), fpca_lambdas);
+  if (calibration == "gcv") {
+    matrix_t fpca_gcv(n_comp * lambda_grid.size(), 5);
+    Eigen::Index row = 0;
+    for (int h = 0; h < n_comp; ++h) {
+      for (std::size_t index = 0; index < lambda_grid.size(); ++index) {
+        fpca_gcv.row(row++) << h + 1, lambda_grid[index],
+            model.gcv_effective_degrees_of_freedom()(h, index),
+            model.gcv()(h, index),
+            lambda_grid[index] == fpca_lambdas(h, 0) ? 1.0 : 0.0;
+      }
+    }
+    write_csv(output_file(output_dir, "fpca_gcv.csv"), fpca_gcv,
+              std::vector<std::string>{"component", "lambda", "edf", "gcv",
+                                       "selected_by_fit"});
+  }
   const matrix_t unavailable_lambdas =
       matrix_t::Constant(n_comp, 1, std::numeric_limits<double>::quiet_NaN());
   write_csv(output_file(output_dir, "direction_lambdas.csv"),
@@ -871,6 +906,8 @@ int run_application(const json &params) {
   telemetry_json["fixed_fpca_lambda"] = fixed_fpca_lambda;
   telemetry_json["fpca_lambdas"] =
       std::vector<double>(fpca_lambdas.data(), fpca_lambdas.data() + n_comp);
+  telemetry_json["fpca_gcv_file"] =
+      calibration == "gcv" ? "fpca_gcv.csv" : "not_applicable_fixed_lambda";
   telemetry_json["score_projection_scales"] = std::vector<double>(
       projection_scales.data(), projection_scales.data() + n_comp);
   telemetry_json["score_projection_reference"] = "model.S()";

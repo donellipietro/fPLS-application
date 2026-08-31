@@ -36,7 +36,8 @@ regularization_boundary_diagnostics <- function(model, test_options) {
 
 report_production_grid_boundaries <- function(diagnostics, validation_status) {
   production <- validation_status %in% c(
-    "complete_data_production", "cross_validation_production", "slider_resampling_production"
+    "complete_data_production", "complete_data_exploratory_diagnostic",
+    "cross_validation_production", "slider_resampling_production"
   )
   boundary <- diagnostics$selected_at_lower_boundary | diagnostics$selected_at_upper_boundary
   if (production && any(boundary)) {
@@ -135,6 +136,7 @@ evaluate_results <- function(model, data, test_options) {
     direction_lambda = model$results$direction_lambdas[, 1],
     loading_lambda = model$results$loading_lambdas[, 1],
     fpls_loading_gcv = model$results$fpls_loading_gcv,
+    fpca_gcv = model$results$fpca_gcv,
     regularization_boundaries = regularization_boundaries,
     provenance = model$results$provenance,
     validation_status = test_options$provenance$validation_status

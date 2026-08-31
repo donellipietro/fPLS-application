@@ -15,6 +15,10 @@ standard_lambda_grid <- function() {
   10^(-15:2)
 }
 
+fpcr_h20_lambda_grid <- function() {
+  10^(-15:6)
+}
+
 generate_options <- function(test_suite, name_main_test, path_queue) {
   mkdir(path_queue)
   if (!name_main_test %in% test_groups$all) {
@@ -24,13 +28,16 @@ generate_options <- function(test_suite, name_main_test, path_queue) {
   cfg <- load_config()
   is_cv <- name_main_test == "out_of_sample"
   is_slider_resampling <- name_main_test %in% c("slider_resampling", "fpcr_slider_resampling")
-  is_fpcr <- name_main_test %in% c("fpcr_h_stability", "fpcr_slider_resampling")
+  is_fpcr_h20 <- identical(name_main_test, "fpcr_h20_separation")
+  is_fpcr <- name_main_test %in% c(
+    "fpcr_h_stability", "fpcr_slider_resampling", "fpcr_h20_separation"
+  )
   uses_splits <- is_cv || is_slider_resampling
   models <- if (is_fpcr) {
     list(names = "fPCR", labels = "fPCR", colors = "#2f855a")
   } else brain_model_catalog(include_fpcr = is_cv)
   fit_native <- uses_splits || (name_main_test != "smoke_overall_mean" && !SMOKE_TEST)
-  n_comp <- if (is_cv && SMOKE_TEST) 1L else if (is_slider_resampling && SMOKE_TEST) 3L else if (name_main_test %in% c(
+  n_comp <- if (is_fpcr_h20) 20L else if (is_cv && SMOKE_TEST) 1L else if (is_slider_resampling && SMOKE_TEST) 3L else if (name_main_test %in% c(
     "h_stability", "slider_resampling", "fpcr_h_stability", "fpcr_slider_resampling", "out_of_sample"
   )) 6L else 3L
   n_folds <- if (uses_splits) {
@@ -58,6 +65,8 @@ generate_options <- function(test_suite, name_main_test, path_queue) {
         "repeated_stratified_outer_CV"
       } else if (is_slider_resampling) {
         "repeated_stratified_delete_one_fold_slider_stability"
+      } else if (is_fpcr_h20) {
+        "single_H20_fpcr_separation_diagnostic"
       } else if (fit_native) {
         "single_H6_slider_prefix_stability"
       } else "smoke_prepare_only"
@@ -73,13 +82,15 @@ generate_options <- function(test_suite, name_main_test, path_queue) {
       calibration = "gcv",
       fixed_direction_lambda = 1e-9,
       fixed_loading_lambda = 1e-9,
-      lambda_grid = standard_lambda_grid(),
+      lambda_grid = if (is_fpcr_h20) fpcr_h20_lambda_grid() else standard_lambda_grid(),
       gcv_seed = 0L,
       gcv_probes = if (SMOKE_TEST) 5L else 100L,
       max_iter = if (uses_splits && SMOKE_TEST) 1L else 1000L,
       tolerance = 1e-8,
       fixed_lambda_status = "inactive_unless_calibration_is_fixed",
-      status = "application_expanded_GCV_grid_after_H6_loading2_hit_1e-12"
+      status = if (is_fpcr_h20) {
+        "exploratory_fpca_upper_grid_extension_after_resampling_boundary_hits"
+      } else "application_expanded_GCV_grid_after_H6_loading2_hit_1e-12"
     ),
     mean_estimation = list(
       method = "tetrahedral_P1_FEM_GCV_smoothed_functional_mean",
@@ -112,6 +123,8 @@ generate_options <- function(test_suite, name_main_test, path_queue) {
         } else {
           "slider_resampling_noncanonical"
         }
+      } else if (is_fpcr_h20) {
+        "complete_data_exploratory_diagnostic"
       } else if (fit_native) "complete_data_production" else "smoke_data_preparation_only",
       template_runtime_commit = "89ba803b85c76b40aab8af2037b779fd29677924"
     )

@@ -132,6 +132,11 @@ fpls_loading_gcv <- do.call(rbind, lapply(names(all_evaluations), function(name)
   if (is.null(value$fpls_loading_gcv)) return(NULL)
   cbind(scenario = value$scenario, value$fpls_loading_gcv)
 }))
+fpca_gcv <- do.call(rbind, lapply(names(all_evaluations), function(name) {
+  value <- all_evaluations[[name]]
+  if (is.null(value$fpca_gcv)) return(NULL)
+  cbind(scenario = value$scenario, value$fpca_gcv)
+}))
 all_gcv_selections_interior <- is.null(regularization_boundaries) || !any(
   regularization_boundaries$selected_at_lower_boundary |
     regularization_boundaries$selected_at_upper_boundary
@@ -396,12 +401,16 @@ if (requested == "out_of_sample") {
   quit(save = "no", status = 0)
 }
 
-if (requested %in% c("h_stability", "fpcr_h_stability")) {
+complete_data_targets <- c("h_stability", "fpcr_h_stability", "fpcr_h20_separation")
+if (requested %in% complete_data_targets) {
   validation_statuses <- unique(vapply(all_evaluations, function(value) {
     status <- value$provenance$validation_status
     if (is.null(status)) NA_character_ else as.character(status)
   }, character(1)))
-  if (!identical(validation_statuses, "complete_data_production")) {
+  expected_validation <- if (identical(requested, "fpcr_h20_separation")) {
+    "complete_data_exploratory_diagnostic"
+  } else "complete_data_production"
+  if (!identical(validation_statuses, expected_validation)) {
     write_json(
       list(
         schema_version = 2L,
@@ -449,6 +458,31 @@ if (!is.null(fpls_loading_gcv)) {
     row.names = FALSE
   )
 }
+if (!is.null(fpca_gcv)) {
+  write.csv(fpca_gcv, file.path(aggregate_dir, "fpca_gcv.csv"), row.names = FALSE)
+  if (identical(requested, "fpcr_h20_separation")) {
+    fpca_gcv$relative_gcv <- ave(fpca_gcv$gcv, fpca_gcv$component, FUN = function(x) {
+      (x - min(x)) / max(abs(min(x)), .Machine$double.eps)
+    })
+    image_dir <- file.path(cfg$PATH_IMAGES, test_suite, "aggregate", requested)
+    dir.create(image_dir, recursive = TRUE, showWarnings = FALSE)
+    curve_plot <- ggplot(fpca_gcv, aes(lambda, relative_gcv)) +
+      geom_line(linewidth = 0.5, colour = "#007C91") +
+      geom_point(size = 1, colour = "#007C91") +
+      geom_point(
+        data = fpca_gcv[fpca_gcv$selected_by_fit == 1, , drop = FALSE],
+        colour = "#D55E00", size = 2
+      ) +
+      scale_x_log10() +
+      facet_wrap(~ component, scales = "free_y", ncol = 4) +
+      labs(x = expression(lambda), y = "Relative GCV above component minimum") +
+      theme_bw()
+    ggsave(
+      plot_file(image_dir, "fpca_gcv_curves"), curve_plot,
+      width = 10, height = 12, dpi = 180
+    )
+  }
+}
 
 separation <- do.call(rbind, lapply(names(all_evaluations), function(name) {
   value <- all_evaluations[[name]]
@@ -491,14 +525,18 @@ if (!is.null(separation)) {
 
 beta_stability_summary <- NULL
 maximum_margin_summary <- NULL
+score_space_separation <- NULL
 classifier_formula_max_abs_error <- NULL
-complete_reducer <- if (identical(requested, "fpcr_h_stability")) "fPCR" else "R1-fPLS"
+complete_reducer <- if (requested %in% c("fpcr_h_stability", "fpcr_h20_separation")) {
+  "fPCR"
+} else "R1-fPLS"
 complete_model <- if (identical(complete_reducer, "fPCR")) "fPCR" else "R1_fPLS"
-complete_scenario <- paste0(requested, "_H6")
-has_complete_h6 <- any(vapply(all_evaluations, function(value) {
+complete_h <- if (identical(requested, "fpcr_h20_separation")) 20L else 6L
+complete_scenario <- paste0(requested, "_H", complete_h)
+has_complete_fit <- any(vapply(all_evaluations, function(value) {
   identical(value$scenario, complete_scenario) && identical(value$dimension_reducer, complete_reducer)
 }, logical(1)))
-if (requested %in% c("h_stability", "fpcr_h_stability") && has_complete_h6) {
+if (requested %in% complete_data_targets && has_complete_fit) {
   raw_dir <- file.path(path_list$results, requested, complete_scenario, "batch_1", "raw", complete_model)
   batch_dir <- dirname(dirname(raw_dir))
   image_dir <- file.path(cfg$PATH_IMAGES, test_suite, "aggregate", requested)
@@ -522,8 +560,11 @@ if (requested %in% c("h_stability", "fpcr_h_stability") && has_complete_h6) {
     file.path(raw_dir, "x_space_directions_coefficients.csv"),
     check.names = FALSE
   )))
+  complete_scores <- as.matrix(suppressWarnings(read.csv(
+    file.path(raw_dir, "x_latent_scores.csv"), check.names = FALSE
+  )))
   maximum_margin_summary <- maximum_margin_prefix_sensitivity(
-    scores = as.matrix(suppressWarnings(read.csv(file.path(raw_dir, "x_latent_scores.csv"), check.names = FALSE))),
+    scores = complete_scores,
     x_loadings = x_loadings,
     x_directions = x_directions,
     labels = prepared_data$labels,
@@ -531,6 +572,36 @@ if (requested %in% c("h_stability", "fpcr_h_stability") && has_complete_h6) {
     elements = elements,
     require_hard_margin = identical(complete_reducer, "R1-fPLS"),
     compute_classifier_maps = identical(complete_reducer, "R1-fPLS")
+  )
+  score_space_separation <- maximum_margin_summary$diagnostics[c(
+    "retained_components", "hard_margin", "accuracy", "sensitivity",
+    "specificity", "auc", "geometric_margin_standardized_scores",
+    "support_vectors"
+  )]
+  if (identical(requested, "fpcr_h20_separation")) {
+    low_prefixes <- do.call(rbind, lapply(1:2, function(h) {
+      fit <- fit_maximum_margin_boundary(
+        complete_scores[, seq_len(h), drop = FALSE],
+        prepared_data$labels,
+        require_hard_margin = FALSE
+      )
+      data.frame(
+        retained_components = h,
+        hard_margin = fit$hard_margin,
+        accuracy = fit$accuracy,
+        sensitivity = fit$sensitivity,
+        specificity = fit$specificity,
+        auc = fit$auc,
+        geometric_margin_standardized_scores = fit$geometric_margin,
+        support_vectors = fit$support_vectors
+      )
+    }))
+    score_space_separation <- rbind(low_prefixes, score_space_separation)
+  }
+  write.csv(
+    score_space_separation,
+    file.path(aggregate_dir, "score_space_separation_by_H.csv"),
+    row.names = FALSE
   )
 
   slider_stability <- maximum_margin_summary$spatial_stability[
@@ -578,13 +649,13 @@ if (requested %in% c("h_stability", "fpcr_h_stability") && has_complete_h6) {
   functional_mean <- drop(as.matrix(suppressWarnings(read.csv(
     file.path(raw_dir, "functional_mean_locations.csv"), check.names = FALSE
   ))))
-  X_fitted <- lapply(seq_len(6L), function(h) {
+  X_fitted <- lapply(seq_len(complete_h), function(h) {
     X_reconstruction <- as.matrix(suppressWarnings(read.csv(
       file.path(raw_dir, glue::glue("x_hat_locations_h{h}.csv")), check.names = FALSE
     )))
     sweep(X_reconstruction, 2L, functional_mean, "+", check.margin = FALSE)
   })
-  Y_fitted <- lapply(seq_len(6L), function(h) {
+  Y_fitted <- lapply(seq_len(complete_h), function(h) {
     as.matrix(suppressWarnings(read.csv(
       file.path(raw_dir, glue::glue("y_hat_h{h}.csv")), check.names = FALSE
     )))
@@ -609,7 +680,7 @@ if (requested %in% c("h_stability", "fpcr_h_stability") && has_complete_h6) {
     ) +
       geom_line(linewidth = 0.7, colour = "#007C91") +
       geom_point(size = 2, colour = "#007C91") +
-      scale_x_continuous(breaks = 1:6) +
+      scale_x_continuous(breaks = seq_len(complete_h)) +
       labs(x = "Retained components H", y = explained_labels[[metric]]) +
       theme_bw()
     ggsave(
@@ -719,7 +790,7 @@ if (requested %in% c("h_stability", "fpcr_h_stability") && has_complete_h6) {
     geom_line(linewidth = 0.7, colour = "#007C91") +
     geom_point(size = 2, colour = "#007C91") +
     geom_text(aes(label = paste0("SV: ", support_vectors)), vjust = -0.8, size = 3.2) +
-    scale_x_continuous(breaks = 3:6) +
+    scale_x_continuous(breaks = 3:complete_h) +
     scale_y_continuous(expand = expansion(mult = c(0.05, 0.15))) +
     labs(x = "Retained components H", y = "Maximum geometric margin (standardized scores)") +
     theme_bw()
@@ -731,6 +802,15 @@ if (requested %in% c("h_stability", "fpcr_h_stability") && has_complete_h6) {
     dpi = 180
   )
 
+}
+
+first_hard_margin_H <- if (is.null(score_space_separation)) {
+  "not_evaluated"
+} else {
+  hard <- score_space_separation
+  if (any(hard$hard_margin)) {
+    as.character(min(hard$retained_components[hard$hard_margin]))
+  } else paste0("none_up_to_H", complete_h)
 }
 
 write_json(
@@ -748,19 +828,22 @@ write_json(
       "not_evaluated"
     } else if (any(separation$perfect_separation)) {
       as.character(min(separation$prefix_components[separation$perfect_separation]))
-    } else "none_up_to_H6",
+    } else paste0("none_up_to_H", complete_h),
+    first_H_with_hard_margin_score_space_separation = first_hard_margin_H,
     H3_hard_margin_separable = if (is.null(maximum_margin_summary)) {
       "not_evaluated"
     } else isTRUE(maximum_margin_summary$fits[["3"]]$hard_margin),
-    prefix_diagnostics = "computed_from_single_H6_fit",
+    prefix_diagnostics = paste0("computed_from_single_H", complete_h, "_fit"),
     separation_orientation = list(
       score_positive_class = "CTRL",
       auc_positive_class = "CTRL",
       sensitivity_class = "SCHZ",
       specificity_class = "CTRL"
     ),
-    decision_boundary_loading_stability = if (is.null(maximum_margin_summary)) {
-      "requires_H6_fit"
+    decision_boundary_loading_stability = if (identical(requested, "fpcr_h20_separation")) {
+      "not_a_primary_target_for_exploratory_fpcr_separation_diagnostic"
+    } else if (is.null(maximum_margin_summary)) {
+      paste0("requires_H", complete_h, "_fit")
     } else {
       list(
         reference = "H3_maximum_margin_SVM_slider_loading",
@@ -771,10 +854,10 @@ write_json(
       )
     },
     explained_structure = if (is.null(maximum_margin_summary)) {
-      "requires_H6_fit"
+      paste0("requires_H", complete_h, "_fit")
     } else {
       list(
-        prefixes = 1:6,
+        prefixes = seq_len(complete_h),
         metrics = c("X_variance_explained", "Y_variance_explained", "XY_cross_covariance_explained"),
         norm = "observation_location_Frobenius_matching_simulation_study",
         FEM_mass_matrix = "not_used"
@@ -783,7 +866,7 @@ write_json(
     beta_stability = if (identical(complete_reducer, "fPCR")) {
       "not_requested_for_fPCR_slider_comparator"
     } else if (is.null(beta_stability_summary)) {
-      "requires_H6_fit"
+      paste0("requires_H", complete_h, "_fit")
     } else {
       list(
         reference = "native_Beta_H3",
@@ -793,7 +876,7 @@ write_json(
       )
     },
     maximum_margin_sensitivity = if (is.null(maximum_margin_summary)) {
-      "requires_H6_fit"
+      paste0("requires_H", complete_h, "_fit")
     } else {
       list(
         classifier = if (all(maximum_margin_summary$diagnostics$hard_margin)) {
@@ -819,7 +902,7 @@ write_json(
       )
     },
     distinct_fit_prefix_invariance = "not_applicable_single_progressive_fit",
-    complete_data_resources = if (requested %in% c("h_stability", "fpcr_h_stability")) {
+    complete_data_resources = if (requested %in% complete_data_targets) {
       "complete_data_resources.csv"
     } else "not_applicable",
     bootstrap_component_significance = "not_implemented_decision_gated"

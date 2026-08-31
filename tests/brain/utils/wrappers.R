@@ -194,6 +194,9 @@ fit_native_model <- function(model_name, data, path_list, test_options) {
     fpca_lambdas = if (identical(model_name, "fPCR")) {
       read_cpp_matrix(file.path(raw_dir, "fpca_lambdas.csv"))
     } else matrix(NaN, n_comp, 1L),
+    fpca_gcv = if (identical(telemetry$fpca_gcv_file, "fpca_gcv.csv")) {
+      suppressWarnings(read.csv(file.path(raw_dir, "fpca_gcv.csv"), check.names = FALSE))
+    } else NULL,
     score_projection_scales = if (identical(model_name, "fPCR")) {
       read_cpp_matrix(file.path(raw_dir, "score_projection_scales.csv"))
     } else matrix(1, n_comp, 1L),
@@ -228,6 +231,18 @@ fit_native_model <- function(model_name, data, path_list, test_options) {
     if (nrow(raw$fpls_loading_gcv) < grid_size ||
         any(component_rows != grid_size)) {
       stop("fPLS loading GCV diagnostics have the wrong number of rows")
+    }
+  }
+  if (!is.null(raw$fpca_gcv)) {
+    expected_columns <- c("component", "lambda", "edf", "gcv", "selected_by_fit")
+    if (!all(expected_columns %in% names(raw$fpca_gcv))) {
+      stop("fPCA GCV diagnostics have the wrong columns")
+    }
+    grid_size <- length(test_options$regularization$lambda_grid)
+    component_rows <- table(raw$fpca_gcv$component)
+    if (nrow(raw$fpca_gcv) != n_comp * grid_size ||
+        length(component_rows) != n_comp || any(component_rows != grid_size)) {
+      stop("fPCA GCV diagnostics have the wrong number of rows")
     }
   }
 
