@@ -18,13 +18,11 @@ native_model_matches_options <- function(model, model_name, test_options, data, 
     right <- unlist(right, use.names = TRUE)
     same(left[sort(names(left))], right[sort(names(right))])
   }
-  split_matches <- if (isTRUE(test_options$cross_validation$enabled)) {
-    observed <- telemetry$provenance$cross_validation_split
-    expected <- test_options$cross_validation[c(
+  split_matches <- if (isTRUE(test_options$resampling$enabled)) {
+    observed <- telemetry$provenance$resampling_split
+    expected <- test_options$resampling[c(
       "n_folds", "n_repeats", "repeat_index", "fold_index", "seed",
-      "inner_folds", "evaluation_components", "svm_cost_grid",
-      "class_weighting", "primary_components", "purpose", "fixed_slider_cost",
-      "test_usage"
+      "purpose", "test_usage"
     )]
     same(
       observed[sort(names(observed))],

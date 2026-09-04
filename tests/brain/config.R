@@ -7,9 +7,7 @@ TEST_SUITE <- "fPLS brain application"
 test_suite <- "brain"
 
 test_groups <- list(all = c(
-  "smoke_overall_mean", "h_stability", "slider_resampling",
-  "fpcr_h_stability", "fpcr_slider_resampling", "fpcr_h20_separation",
-  "out_of_sample"
+  "smoke_overall_mean", "h_stability", "slider_resampling", "fpcr_h20_separation"
 ))
 
 FORCE_FIT <- FALSE

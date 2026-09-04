@@ -96,7 +96,7 @@ stratified_fold_ids <- function(labels, n_folds, repeat_index, seed = 0L) {
   labels <- factor(as.character(labels), levels = c("CTRL", "SCHZ"))
   n_folds <- as.integer(n_folds)
   if (n_folds < 2L || any(table(labels) < n_folds)) {
-    stop("stratified CV requires at least one subject per class in every fold")
+    stop("stratified resampling requires at least one subject per class in every fold")
   }
 
   set.seed(as.integer(seed) + as.integer(repeat_index) - 1L)
@@ -108,7 +108,7 @@ stratified_fold_ids <- function(labels, n_folds, repeat_index, seed = 0L) {
   fold_ids
 }
 
-prepare_brain_cv_split <- function(
+prepare_brain_resampling_split <- function(
     data, n_folds, repeat_index, fold_index, seed = 0L, include_omitted_data = TRUE) {
   fold_ids <- stratified_fold_ids(data$labels, n_folds, repeat_index, seed)
   test_indices <- which(fold_ids == as.integer(fold_index))
@@ -130,7 +130,7 @@ prepare_brain_cv_split <- function(
       n_nodes = ncol(data$X),
       n_tetrahedra = nrow(data$elements)
     ),
-    cross_validation = list(
+    resampling = list(
       n_folds = as.integer(n_folds),
       repeat_index = as.integer(repeat_index),
       fold_index = as.integer(fold_index),
@@ -141,8 +141,8 @@ prepare_brain_cv_split <- function(
     )
   )
   if (include_omitted_data) {
-    split$cross_validation$test_X <- data$X[test_indices, , drop = FALSE]
-    split$cross_validation$test_labels <- factor(
+    split$resampling$omitted_X <- data$X[test_indices, , drop = FALSE]
+    split$resampling$omitted_labels <- factor(
       as.character(data$labels[test_indices]), levels = c("CTRL", "SCHZ")
     )
   }

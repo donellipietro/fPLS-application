@@ -1,31 +1,15 @@
 # = ========================================================================== =
 # - Script: slider_resampling.R
-# - Desc: Training-sample stability of the complete-data H=3 slider loading.
+# - Desc: Training-sample stability of the complete-data H=3 intrinsic slider.
 # = ========================================================================== =
 
-slider_resampling_reducer <- function(evaluation) {
-  reducer <- evaluation$dimension_reducer
-  if (is.null(reducer)) reducer <- evaluation$provenance$model
-  if (identical(reducer, "R1_fPLS")) reducer <- "R1-fPLS"
-  if (is.null(reducer) || !reducer %in% c("R1-fPLS", "fPCR")) {
-    stop("slider-resampling evaluation has no recognized dimension reducer")
-  }
-  reducer
-}
-
 evaluate_slider_resampling <- function(model, data, test_options) {
-  if (!model$MODE %in% c("R1_fPLS", "fPCR")) stop("unsupported slider-resampling reducer")
-  reducer <- if (identical(model$MODE, "fPCR")) "fPCR" else "R1-fPLS"
-  if (!is.null(data$cross_validation$test_X) || !is.null(data$cross_validation$test_labels)) {
+  if (!identical(model$MODE, "R1_fPLS")) stop("slider resampling requires R1_fPLS")
+  if (!is.null(data$resampling$omitted_X) || !is.null(data$resampling$omitted_labels)) {
     stop("slider resampling must not receive omitted-subject predictors or labels")
   }
   if (!identical(model$status, 0L)) {
-    return(list(
-      failed = TRUE,
-      status = model$status,
-      dimension_reducer = reducer,
-      validation_status = "native_fit_failed"
-    ))
+    return(list(failed = TRUE, status = model$status, validation_status = "native_fit_failed"))
   }
 
   regularization_boundaries <- regularization_boundary_diagnostics(model, test_options)
@@ -48,8 +32,9 @@ evaluate_slider_resampling <- function(model, data, test_options) {
     stop("slider-resampling production fit reached the component iteration limit")
   }
 
-  training_mean <- drop(model$results$functional_mean_locations)
-  centered_X <- sweep(data$X, 2L, training_mean, check.margin = FALSE)
+  centered_X <- sweep(
+    data$X, 2L, drop(model$results$functional_mean_locations), check.margin = FALSE
+  )
   projected_scores <- project_reducer_scores(
     centered_X, model$results$X_space_directions, model$results$X_loadings
   )
@@ -72,39 +57,30 @@ evaluate_slider_resampling <- function(model, data, test_options) {
   first_perfect_h <- if (any(separation$perfect_separation)) {
     min(separation$prefix_components[separation$perfect_separation])
   } else NA_integer_
-
-  h3_fit <- fit_maximum_margin_boundary(
-    projected_scores[, seq_len(3L), drop = FALSE],
-    data$labels,
-    cost = test_options$cross_validation$fixed_slider_cost,
-    require_hard_margin = FALSE
+  slider <- standardized_intrinsic_fpls_slider(
+    model$results$X_latent_scores,
+    model$results$X_loadings,
+    model$results$Y_loadings,
+    3L
   )
-  slider_h3 <- drop(model$results$X_loadings[, seq_len(3L), drop = FALSE] %*%
-    (h3_fit$score_scale * h3_fit$unit_standardized_normal))
 
   list(
     failed = FALSE,
     status = 0L,
-    dimension_reducer = reducer,
+    dimension_reducer = "R1-fPLS",
     n_comp = n_comp,
-    cross_validation = list(
-      repeat_index = data$cross_validation$repeat_index,
-      fold_index = data$cross_validation$fold_index,
-      train_indices = data$cross_validation$train_indices,
-      omitted_indices = data$cross_validation$test_indices,
+    resampling = list(
+      repeat_index = data$resampling$repeat_index,
+      fold_index = data$resampling$fold_index,
+      train_indices = data$resampling$train_indices,
+      omitted_indices = data$resampling$test_indices,
       test_data_used = FALSE
     ),
     separation = separation,
     first_H_with_perfect_training_separation = first_perfect_h,
-    h3_hard_margin_separable = isTRUE(h3_fit$hard_margin),
-    h3_minimum_canonical_margin = h3_fit$minimum_canonical_margin,
-    slider_h3 = slider_h3,
-    fixed_slider_cost = test_options$cross_validation$fixed_slider_cost,
+    slider_h3 = slider$loading,
     direction_lambda = as.numeric(model$results$direction_lambdas[, 1]),
     loading_lambda = as.numeric(model$results$loading_lambdas[, 1]),
-    fpca_lambda = if (is.null(model$results$fpca_lambdas)) {
-      rep(NA_real_, n_comp)
-    } else as.numeric(model$results$fpca_lambdas[, 1]),
     functional_mean_lambda = model$results$telemetry$mean_selected_lambda,
     regularization_boundaries = regularization_boundaries,
     projection_max_abs_error = projection_error,
@@ -136,296 +112,56 @@ slider_resampling_summary <- function(values) {
   )
 }
 
-slider_test_explained_structure <- function(model, full_data, evaluation) {
-  reducer <- slider_resampling_reducer(evaluation)
-  expected_mode <- if (identical(reducer, "fPCR")) "fPCR" else "R1_fPLS"
-  if (!identical(model$MODE, expected_mode) || !identical(model$status, 0L)) {
-    stop("saved slider-resampling model does not match its evaluation")
-  }
-  train_indices <- as.integer(evaluation$cross_validation$train_indices)
-  test_indices <- as.integer(evaluation$cross_validation$omitted_indices)
-  all_indices <- seq_len(nrow(full_data$X))
-  if (anyDuplicated(c(train_indices, test_indices)) ||
-      !setequal(c(train_indices, test_indices), all_indices)) {
-    stop("slider-resampling train and omitted indices do not partition the application data")
-  }
-  model_md5 <- unlist(model$results$provenance$input_md5, use.names = TRUE)
-  data_md5 <- unlist(full_data$input_md5, use.names = TRUE)
-  if (!isTRUE(all.equal(
-    model_md5[sort(names(model_md5))], data_md5[sort(names(data_md5))]
-  ))) {
-    stop("saved slider-resampling model input provenance does not match the application data")
-  }
-  if (!identical(
-    as.character(model$results$provenance$application_commit),
-    as.character(evaluation$provenance$application_commit)
-  )) {
-    stop("saved slider-resampling model and evaluation have different application commits")
-  }
-
-  train_response <- recoded_response(full_data$labels[train_indices])
-  test_labels <- factor(
-    as.character(full_data$labels[test_indices]), levels = c("CTRL", "SCHZ")
-  )
-  train_counts <- table(factor(as.character(train_response$labels), levels = c("CTRL", "SCHZ")))
-  p_ctrl <- unname(train_counts[["CTRL"]] / sum(train_counts))
-  p_schz <- unname(train_counts[["SCHZ"]] / sum(train_counts))
-  test_Y <- matrix(ifelse(
-    test_labels == "CTRL", sqrt(p_schz / p_ctrl), -sqrt(p_ctrl / p_schz)
-  ), ncol = 1L)
-
-  training_mean <- drop(model$results$functional_mean_locations)
-  directions <- model$results$X_space_directions
-  loadings <- model$results$X_loadings
-  train_X_centered <- sweep(
-    full_data$X[train_indices, , drop = FALSE], 2L, training_mean, "-",
-    check.margin = FALSE
-  )
-  test_X <- full_data$X[test_indices, , drop = FALSE]
-  test_X_centered <- sweep(test_X, 2L, training_mean, "-", check.margin = FALSE)
-  train_scores <- project_reducer_scores(train_X_centered, directions, loadings)
-  test_scores <- project_reducer_scores(test_X_centered, directions, loadings)
-  projection_error <- max(abs(train_scores - model$results$X_latent_scores))
-  if (!is.finite(projection_error) || projection_error > 1e-9) {
-    stop("saved slider-resampling model does not reproduce its training scores")
-  }
-
-  X_reconstruction <- matrix(0, nrow(test_X), ncol(test_X))
-  rows <- vector("list", as.integer(evaluation$n_comp))
-  for (h in seq_len(as.integer(evaluation$n_comp))) {
-    X_reconstruction <- X_reconstruction + tcrossprod(test_scores[, h], loadings[, h])
-    coefficients <- if (identical(reducer, "fPCR")) {
-      qr.solve(train_scores[, seq_len(h), drop = FALSE], train_response$y)
-    } else {
-      matrix(
-        as.numeric(model$results$Y_loadings[1, seq_len(h), drop = TRUE]), ncol = 1L
-      )
-    }
-    response_replay_error <- max(abs(
-      train_scores[, seq_len(h), drop = FALSE] %*% coefficients -
-        model$results$Y_hat[[h]]
-    ))
-    if (!is.finite(response_replay_error) || response_replay_error > 1e-9) {
-      stop("saved slider-resampling response loadings do not reproduce native fitted Y")
-    }
-    Y_fitted <- test_scores[, seq_len(h), drop = FALSE] %*% coefficients
-    X_fitted <- sweep(X_reconstruction, 2L, training_mean, "+", check.margin = FALSE)
-    metrics <- observation_explained_structure(
-      test_X, test_Y, list(X_fitted), list(Y_fitted)
-    )
-    rows[[h]] <- data.frame(
-      dimension_reducer = reducer,
-      repeat_index = evaluation$cross_validation$repeat_index,
-      fold_index = evaluation$cross_validation$fold_index,
-      retained_components = h,
-      test_subjects = length(test_indices),
-      X_variance_explained = metrics$X_variance_explained,
-      Y_variance_explained = metrics$Y_variance_explained,
-      XY_cross_covariance_explained = metrics$XY_cross_covariance_explained,
-      training_projection_max_abs_error = projection_error,
-      training_response_replay_max_abs_error = response_replay_error
-    )
-  }
-  do.call(rbind, rows)
-}
-
-aggregate_slider_test_explained_structure <- function(
-    evaluations, target, aggregate_dir, image_dir, cfg) {
-  dir.create(aggregate_dir, recursive = TRUE, showWarnings = FALSE)
-  reference_target <- if (identical(target, "fpcr_slider_resampling")) {
-    "fpcr_h_stability"
-  } else "h_stability"
-  full_data_file <- file.path(
-    cfg$PATH_RESULTS, "brain", reference_target, paste0(reference_target, "_H6"),
-    "batch_1", "prepared_data.rds"
-  )
-  if (!file.exists(full_data_file)) {
-    stop("held-out structural evaluation requires complete-data prepared_data.rds")
-  }
-  full_data <- readRDS(full_data_file)
-  values <- do.call(rbind, lapply(evaluations, function(evaluation) {
-    reducer <- slider_resampling_reducer(evaluation)
-    model_name <- if (identical(reducer, "fPCR")) "fPCR" else "R1_fPLS"
-    model_file <- file.path(
-      cfg$PATH_RESULTS, "brain", target, evaluation$scenario, "batch_1",
-      paste0("batch_1_fitted_model_", model_name, ".RData")
-    )
-    if (!file.exists(model_file)) stop("missing saved slider-resampling model: ", model_file)
-    model_environment <- new.env(parent = emptyenv())
-    load(model_file, envir = model_environment)
-    object_name <- paste0("model_", model_name)
-    if (!exists(object_name, envir = model_environment, inherits = FALSE)) {
-      stop("saved slider-resampling model file has no ", object_name)
-    }
-    result <- slider_test_explained_structure(
-      get(object_name, envir = model_environment, inherits = FALSE),
-      full_data,
-      evaluation
-    )
-    rm(model_environment)
-    result
-  }))
-  values <- values[order(
-    values$repeat_index, values$fold_index, values$retained_components
-  ), , drop = FALSE]
-
-  metric_names <- c(
-    "X_variance_explained", "Y_variance_explained", "XY_cross_covariance_explained"
-  )
-  long <- do.call(rbind, lapply(metric_names, function(metric) {
-    data.frame(
-      dimension_reducer = values$dimension_reducer,
-      repeat_index = values$repeat_index,
-      fold_index = values$fold_index,
-      retained_components = values$retained_components,
-      metric = metric,
-      value = values[[metric]]
-    )
-  }))
-  groups <- split(long, interaction(long$retained_components, long$metric, drop = TRUE))
-  summary <- do.call(rbind, lapply(groups, function(value) {
-    data.frame(
-      dimension_reducer = value$dimension_reducer[1],
-      retained_components = value$retained_components[1],
-      metric = value$metric[1],
-      mean = mean(value$value),
-      sd = sd(value$value),
-      median = median(value$value),
-      q25 = unname(quantile(value$value, 0.25)),
-      q75 = unname(quantile(value$value, 0.75)),
-      folds = nrow(value)
-    )
-  }))
-  summary <- summary[order(summary$metric, summary$retained_components), , drop = FALSE]
-
-  write.csv(
-    values,
-    file.path(aggregate_dir, "slider_resampling_test_explained_structure_by_fold.csv"),
-    row.names = FALSE
-  )
-  write.csv(
-    summary,
-    file.path(aggregate_dir, "slider_resampling_test_explained_structure_summary.csv"),
-    row.names = FALSE
-  )
-
-  dir.create(image_dir, recursive = TRUE, showWarnings = FALSE)
-  curve_plot <- ggplot(
-    long,
-    aes(
-      retained_components, value,
-      group = interaction(repeat_index, fold_index)
-    )
-  ) +
-    geom_line(alpha = 0.2, colour = "#4A5568", linewidth = 0.35) +
-    geom_ribbon(
-      data = summary,
-      aes(x = retained_components, ymin = q25, ymax = q75),
-      inherit.aes = FALSE,
-      fill = "#007C91", alpha = 0.18
-    ) +
-    geom_line(
-      data = summary,
-      aes(retained_components, median),
-      inherit.aes = FALSE,
-      colour = "#007C91", linewidth = 0.9
-    ) +
-    facet_wrap(~ metric, scales = "free_y") +
-    scale_x_continuous(breaks = sort(unique(long$retained_components))) +
-    labs(
-      x = "Retained components H",
-      y = "Held-out explained structure",
-      caption = "Thin lines: individual test folds; teal: median and interquartile range."
-    ) +
-    theme_bw()
-  ggsave(
-    plot_file(image_dir, "slider_resampling_test_explained_structure_by_fold"),
-    curve_plot,
-    width = 11,
-    height = 4.5,
-    dpi = 180
-  )
-
-  native_commits <- unique(vapply(evaluations, function(value) {
-    as.character(value$provenance$application_commit)
-  }, character(1)))
-  if (length(native_commits) != 1L) {
-    stop("held-out structural evaluation requires one native application commit")
-  }
-  list(
-    values = values,
-    summary = summary,
-    native_application_commit = native_commits[[1]]
-  )
-}
-
 aggregate_slider_resampling <- function(evaluations, aggregate_dir, image_dir, cfg) {
   dir.create(aggregate_dir, recursive = TRUE, showWarnings = FALSE)
-  reducers <- unique(vapply(evaluations, function(value) value$dimension_reducer, character(1)))
-  if (length(reducers) != 1L || !reducers %in% c("R1-fPLS", "fPCR")) {
-    stop("slider resampling must aggregate exactly one supported dimension reducer")
-  }
-  reducer <- reducers[[1]]
-  reference_target <- if (identical(reducer, "fPCR")) "fpcr_h_stability" else "h_stability"
+  if (!all(vapply(evaluations, function(value) {
+    identical(value$dimension_reducer, "R1-fPLS")
+  }, logical(1)))) stop("slider resampling requires R1-fPLS evaluations")
+
   reference_status_file <- file.path(
-    cfg$PATH_RESULTS, "brain", "aggregate", reference_target, "application_run_status.json"
+    cfg$PATH_RESULTS, "brain", "aggregate", "h_stability", "application_run_status.json"
   )
   reference_file <- file.path(
-    cfg$PATH_RESULTS, "brain", "aggregate", reference_target,
-    if (identical(reducer, "R1-fPLS")) "intrinsic_fpls_slider_maps" else "maximum_margin_maps",
-    "reconstruction_loading_h3.csv"
+    cfg$PATH_RESULTS, "brain", "aggregate", "h_stability",
+    "intrinsic_fpls_slider_maps", "reconstruction_loading_h3.csv"
   )
   if (!file.exists(reference_status_file) || !file.exists(reference_file)) {
-    stop("slider resampling requires the complete-data status and H=3 slider map")
+    stop("slider resampling requires the complete-data status and H=3 intrinsic slider map")
   }
   reference_status <- jsonlite::fromJSON(reference_status_file, simplifyVector = TRUE)
-  reference_validation <- as.character(reference_status$validation_status)
   accepted_status <- length(reference_status$status) == 1L && reference_status$status %in% c(
     "complete", "complete_with_GCV_boundary_selection"
   )
-  reducer_matches <- is.null(reference_status$dimension_reducer) ||
-    identical(as.character(reference_status$dimension_reducer), reducer)
-  fpls_h3_matches <- !identical(reducer, "R1-fPLS") ||
-    identical(as.character(reference_status$first_H_with_perfect_in_sample_separation), "3")
   if (!isTRUE(reference_status$run_complete) || !accepted_status ||
-      !identical(reference_validation, "complete_data_production") ||
-      !reducer_matches || !fpls_h3_matches) {
-    stop("slider resampling requires its accepted production complete-data reference")
+      !identical(as.character(reference_status$validation_status), "complete_data_production") ||
+      !identical(as.character(reference_status$first_H_with_perfect_in_sample_separation), "3")) {
+    stop("slider resampling requires its accepted complete-data production reference")
   }
   reference <- matrix(as.numeric(read.csv(reference_file, check.names = FALSE)[[1]]), ncol = 1L)
-  reference_md5 <- unname(as.character(tools::md5sum(reference_file)))
-  reference_model <- if (identical(reducer, "fPCR")) "fPCR" else "R1_fPLS"
   reference_raw_dir <- file.path(
-    cfg$PATH_RESULTS, "brain", reference_target, paste0(reference_target, "_H6"),
-    "batch_1", "raw", reference_model
+    cfg$PATH_RESULTS, "brain", "h_stability", "h_stability_H6", "batch_1", "raw", "R1_fPLS"
   )
   mesh_files <- file.path(reference_raw_dir, c("points.csv", "elements.csv"))
-  if (!all(file.exists(mesh_files))) {
-    stop("slider resampling requires the mesh exported by its complete-data reference")
-  }
+  if (!all(file.exists(mesh_files))) stop("slider resampling requires the reference mesh")
   nodes <- as.matrix(suppressWarnings(read.csv(mesh_files[[1]], check.names = FALSE)))
   elements <- matrix(
     as.integer(as.matrix(suppressWarnings(read.csv(mesh_files[[2]], check.names = FALSE)))),
     ncol = 4L
   )
   if (nrow(reference) != nrow(nodes) || any(!is.finite(reference))) {
-    stop("complete-data H=3 slider map is incompatible with its exported mesh")
+    stop("complete-data H=3 intrinsic slider map is incompatible with its mesh")
   }
   volumes <- tetrahedral_volumes(nodes, elements)
 
-  fold_diagnostics <- do.call(rbind, lapply(evaluations, function(value) {
-    data.frame(
-      repeat_index = value$cross_validation$repeat_index,
-      fold_index = value$cross_validation$fold_index,
-      training_subjects = length(value$cross_validation$train_indices),
-      omitted_subjects = length(value$cross_validation$omitted_indices),
-      test_data_used = value$cross_validation$test_data_used,
-      first_H_with_perfect_training_separation = value$first_H_with_perfect_training_separation,
-      h3_hard_margin_separable = value$h3_hard_margin_separable,
-      h3_minimum_canonical_margin = value$h3_minimum_canonical_margin,
-      projection_max_abs_error = value$projection_max_abs_error
-    )
-  }))
+  fold_diagnostics <- do.call(rbind, lapply(evaluations, function(value) data.frame(
+    repeat_index = value$resampling$repeat_index,
+    fold_index = value$resampling$fold_index,
+    training_subjects = length(value$resampling$train_indices),
+    omitted_subjects = length(value$resampling$omitted_indices),
+    test_data_used = value$resampling$test_data_used,
+    first_H_with_perfect_training_separation = value$first_H_with_perfect_training_separation,
+    projection_max_abs_error = value$projection_max_abs_error
+  )))
   maximum_H <- max(vapply(evaluations, function(value) value$n_comp, integer(1)))
   hmin_label <- ifelse(
     is.na(fold_diagnostics$first_H_with_perfect_training_separation),
@@ -437,53 +173,29 @@ aggregate_slider_resampling <- function(evaluations, aggregate_dir, image_dir, c
   hmin_distribution$proportion <- hmin_distribution$training_fits / nrow(fold_diagnostics)
 
   comparisons <- do.call(rbind, lapply(evaluations, function(value) {
-    candidate <- if (identical(reducer, "R1-fPLS")) {
-      raw_dir <- file.path(
-        cfg$PATH_RESULTS, "brain", "slider_resampling", value$scenario,
-        "batch_1", "raw", "R1_fPLS"
-      )
-      raw_files <- file.path(raw_dir, c(
-        "x_latent_scores.csv", "x_loadings_coefficients.csv", "y_loadings.csv"
-      ))
-      if (length(raw_files) != 3L || !all(file.exists(raw_files))) {
-        stop("intrinsic slider resampling requires native scores and loadings for ", value$scenario)
-      }
-      read_matrix <- function(path) as.matrix(suppressWarnings(read.csv(
-        path, check.names = FALSE
-      )))
-      matrix(standardized_intrinsic_fpls_slider(
-        read_matrix(raw_files[[1]]),
-        read_matrix(raw_files[[2]]),
-        read_matrix(raw_files[[3]]),
-        3L
-      )$loading, ncol = 1L)
-    } else {
-      matrix(value$slider_h3, ncol = 1L)
-    }
-    comparison <- mass_stability(reference, candidate, elements, volumes, sign_align = FALSE)
+    comparison <- mass_stability(
+      reference, matrix(value$slider_h3, ncol = 1L), elements, volumes, sign_align = FALSE
+    )
     cbind(
-      repeat_index = value$cross_validation$repeat_index,
-      fold_index = value$cross_validation$fold_index,
-      dimension_reducer = reducer,
+      repeat_index = value$resampling$repeat_index,
+      fold_index = value$resampling$fold_index,
+      dimension_reducer = "R1-fPLS",
       reference_components = 3L,
       retained_components = 3L,
       comparison
     )
   }))
   summary <- slider_resampling_summary(comparisons)
-
-  regularization_boundaries <- do.call(rbind, lapply(evaluations, function(value) {
-    cbind(
-      repeat_index = value$cross_validation$repeat_index,
-      fold_index = value$cross_validation$fold_index,
-      value$regularization_boundaries
-    )
-  }))
+  regularization_boundaries <- do.call(rbind, lapply(evaluations, function(value) cbind(
+    repeat_index = value$resampling$repeat_index,
+    fold_index = value$resampling$fold_index,
+    value$regularization_boundaries
+  )))
   resources <- do.call(rbind, lapply(evaluations, function(value) {
     diagnostics <- value$component_diagnostics
     data.frame(
-      repeat_index = value$cross_validation$repeat_index,
-      fold_index = value$cross_validation$fold_index,
+      repeat_index = value$resampling$repeat_index,
+      fold_index = value$resampling$fold_index,
       wall_seconds = as.numeric(value$execution_time),
       peak_ram_mib = value$peak_ram_mib,
       max_component_iterations = max(diagnostics$iterations),
@@ -495,16 +207,9 @@ aggregate_slider_resampling <- function(evaluations, aggregate_dir, image_dir, c
 
   write.csv(fold_diagnostics, file.path(aggregate_dir, "slider_resampling_fold_diagnostics.csv"), row.names = FALSE)
   write.csv(hmin_distribution, file.path(aggregate_dir, "slider_resampling_Hmin_distribution.csv"), row.names = FALSE)
-  stability_stem <- if (identical(reducer, "R1-fPLS")) {
-    "intrinsic_fpls_slider_resampling"
-  } else "slider_resampling"
-  write.csv(comparisons, file.path(aggregate_dir, paste0(stability_stem, "_vs_complete_H3.csv")), row.names = FALSE)
-  write.csv(summary, file.path(aggregate_dir, paste0(stability_stem, "_summary.csv")), row.names = FALSE)
-  write.csv(
-    regularization_boundaries,
-    file.path(aggregate_dir, "slider_resampling_regularization_boundary_diagnostics.csv"),
-    row.names = FALSE
-  )
+  write.csv(comparisons, file.path(aggregate_dir, "intrinsic_fpls_slider_resampling_vs_complete_H3.csv"), row.names = FALSE)
+  write.csv(summary, file.path(aggregate_dir, "intrinsic_fpls_slider_resampling_summary.csv"), row.names = FALSE)
+  write.csv(regularization_boundaries, file.path(aggregate_dir, "slider_resampling_regularization_boundary_diagnostics.csv"), row.names = FALSE)
   write.csv(resources, file.path(aggregate_dir, "slider_resampling_resources.csv"), row.names = FALSE)
 
   dir.create(image_dir, recursive = TRUE, showWarnings = FALSE)
@@ -516,31 +221,33 @@ aggregate_slider_resampling <- function(evaluations, aggregate_dir, image_dir, c
     geom_boxplot(width = 0.3, outlier.shape = NA) +
     geom_jitter(width = 0.08, height = 0, alpha = 0.65) +
     facet_wrap(~ metric, scales = "free_y") +
-    labs(x = NULL, y = paste(reducer, "training-fit comparison with complete-data H=3 slider")) +
-    theme_bw() +
-    theme(legend.position = "none")
-  ggsave(plot_file(image_dir, paste0(stability_stem, "_vs_complete_H3")), stability_plot, width = 7, height = 4.5, dpi = 180)
-
+    labs(x = NULL, y = "Training-fit comparison with complete-data H=3 intrinsic slider") +
+    theme_bw() + theme(legend.position = "none")
+  ggsave(
+    plot_file(image_dir, "intrinsic_fpls_slider_resampling_vs_complete_H3"),
+    stability_plot, width = 7, height = 4.5, dpi = 180
+  )
   hmin_plot <- ggplot(hmin_distribution, aes(first_H, proportion)) +
     geom_col(fill = "#007C91") +
     scale_y_continuous(limits = c(0, 1)) +
     labs(x = "First H with perfect training separation", y = "Proportion of training fits") +
     theme_bw()
-  ggsave(plot_file(image_dir, "slider_resampling_Hmin_distribution"), hmin_plot, width = 7, height = 4.5, dpi = 180)
+  ggsave(
+    plot_file(image_dir, "slider_resampling_Hmin_distribution"),
+    hmin_plot, width = 7, height = 4.5, dpi = 180
+  )
 
   list(
     repeats = length(unique(fold_diagnostics$repeat_index)),
     folds = length(unique(fold_diagnostics$fold_index)),
     fits = nrow(fold_diagnostics),
     comparable_H3_fits = nrow(comparisons),
-    dimension_reducer = reducer,
-    complete_data_reference_target = reference_target,
+    dimension_reducer = "R1-fPLS",
+    complete_data_reference_target = "h_stability",
     complete_data_reference_status = reference_status$status,
     complete_data_reference_first_H = reference_status$first_H_with_perfect_in_sample_separation,
-    complete_data_reference_H3_hard_margin = reference_status$H3_hard_margin_separable,
-    complete_data_reference_map_md5 = reference_md5,
+    complete_data_reference_map_md5 = unname(as.character(tools::md5sum(reference_file))),
     all_test_data_unused = all(!fold_diagnostics$test_data_used),
-    all_H3_hard_margin_separable = all(fold_diagnostics$h3_hard_margin_separable),
     Hmin_distribution = hmin_distribution,
     comparisons = comparisons,
     summary = summary,

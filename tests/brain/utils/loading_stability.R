@@ -55,33 +55,3 @@ beta_stability <- function(beta_coefficients, points, elements, reference_h = 3L
   })
   list(summary = do.call(rbind, comparisons), total_volume = sum(volumes))
 }
-
-observation_explained_structure <- function(X, Y, X_fitted, Y_fitted) {
-  if (length(X_fitted) != length(Y_fitted) || length(X_fitted) == 0L) {
-    stop("explained-structure reconstructions are incomplete")
-  }
-  center_columns <- function(values) sweep(as.matrix(values), 2L, colMeans(values), "-")
-  variance_explained <- function(observed, fitted) {
-    1 - sum((as.matrix(observed) - as.matrix(fitted))^2) /
-      sum(center_columns(observed)^2)
-  }
-  cross_covariance_explained <- function(X, Y, X_hat, Y_hat) {
-    observed <- crossprod(center_columns(X), center_columns(Y)) / (nrow(X) - 1L)
-    fitted <- crossprod(center_columns(X_hat), center_columns(Y_hat)) / (nrow(X_hat) - 1L)
-    1 - sum((observed - fitted)^2) / sum(observed^2)
-  }
-  result <- do.call(rbind, lapply(seq_along(X_fitted), function(h) {
-    data.frame(
-      retained_components = h,
-      X_variance_explained = variance_explained(X, X_fitted[[h]]),
-      Y_variance_explained = variance_explained(Y, Y_fitted[[h]]),
-      XY_cross_covariance_explained = cross_covariance_explained(
-        X, Y, X_fitted[[h]], Y_fitted[[h]]
-      )
-    )
-  }))
-  if (any(!is.finite(as.matrix(result[, -1L, drop = FALSE])))) {
-    stop("non-finite explained-structure diagnostic")
-  }
-  result
-}

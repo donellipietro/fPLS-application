@@ -9,7 +9,7 @@ results_root <- normalizePath(Sys.getenv("FPLS_RESULTS", unset = file.path(appli
 panel_dir <- file.path(figure_root, "panels", "A_latent_scores")
 
 suppressPackageStartupMessages({ library(ggplot2); library(grid); library(plotly) })
-source(file.path(application_root, "tests", "brain", "utils", "maximum_margin_stability.R"))
+source(file.path(application_root, "tests", "brain", "utils", "intrinsic_slider.R"))
 
 read_matrix <- function(path) as.matrix(suppressWarnings(read.csv(path, check.names = FALSE)))
 write_pdf <- function(path, width, height, draw) {
