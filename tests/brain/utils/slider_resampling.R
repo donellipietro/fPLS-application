@@ -129,13 +129,13 @@ aggregate_slider_resampling <- function(evaluations, aggregate_dir, image_dir, c
     stop("slider resampling requires the complete-data status and H=3 intrinsic slider map")
   }
   reference_status <- jsonlite::fromJSON(reference_status_file, simplifyVector = TRUE)
-  accepted_status <- length(reference_status$status) == 1L && reference_status$status %in% c(
+  complete_status <- length(reference_status$status) == 1L && reference_status$status %in% c(
     "complete", "complete_with_GCV_boundary_selection"
   )
-  if (!isTRUE(reference_status$run_complete) || !accepted_status ||
+  if (!isTRUE(reference_status$run_complete) || !complete_status ||
       !identical(as.character(reference_status$validation_status), "complete_data_production") ||
       !identical(as.character(reference_status$first_H_with_perfect_in_sample_separation), "3")) {
-    stop("slider resampling requires its accepted complete-data production reference")
+    stop("slider resampling requires its recorded complete-data production reference")
   }
   reference <- matrix(as.numeric(read.csv(reference_file, check.names = FALSE)[[1]]), ncol = 1L)
   reference_raw_dir <- file.path(

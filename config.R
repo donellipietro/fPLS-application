@@ -68,7 +68,7 @@ local_repo <- normalizePath(".", mustWork = FALSE)
 local_output <- Sys.getenv("TESTBENCH_OUTPUT", unset = local_repo)
 local_fdapde_repository <- Sys.getenv(
   "FDAPDE_CPP_REPOSITORY",
-  unset = "/Users/pietrodonelli/Documents/University/projects/fPLS/fPLS-simulation-study/libraries/fdaPDE-cpp"
+  unset = "https://github.com/fdaPDE/fdaPDE-cpp.git"
 )
 
 TESTBENCH_CONFIG_PROFILES <- list(
@@ -79,14 +79,14 @@ TESTBENCH_CONFIG_PROFILES <- list(
     ),
     fdapde_repository = local_fdapde_repository,
     fdapde_core_repository = Sys.getenv(
-      "FDAPDE_CORE_REPOSITORY", unset = file.path(local_fdapde_repository, "fdaPDE", "core")
+      "FDAPDE_CORE_REPOSITORY", unset = "https://github.com/fdaPDE/fdaPDE-core.git"
     ),
     cc = "/opt/homebrew/bin/gcc-15",
     cxx = "/opt/homebrew/bin/g++-15",
     eigen_include = "/opt/homebrew/opt/eigen/include/eigen3",
     execution_strategy = "parallel",
     compile_strategy = "local",
-    application_data = "/Users/pietrodonelli/Documents/University/projects/fPLS/fPLS-regression/data/brain"
+    application_data = file.path(local_repo, "data", "brain")
   ),
   `hpc-torque` = local({
     repo <- normalizePath(".", mustWork = FALSE)

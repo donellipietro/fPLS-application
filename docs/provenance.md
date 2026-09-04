@@ -4,7 +4,7 @@
 
 The application equations, response coding, and data layout originate from:
 
-- repository: `/Users/pietrodonelli/Documents/University/projects/fPLS/fPLS-regression`
+- legacy repository: `fPLS-regression`
 - revision: `7fb91720b97661c8f83f675f8915ac96f7465912`
 - primary workflow: `analysis/main_CNTRLvsSCHZ.R`
 - supporting workflow: `analysis/sensitivity_analysis.R`

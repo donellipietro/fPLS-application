@@ -1,6 +1,6 @@
 # fPLS Neuroimaging Application
 
-This repository contains the native fdaPDE implementation of the fPLS resting-state fMRI connectivity application. It compares control (`CTRL`) and schizophrenia (`SCHZ`) groups on a volumetric tetrahedral mesh.
+This repository contains the native fdaPDE implementation of the fPLS task-based functional-connectivity application. It compares control (`CTRL`) and schizophrenia (`SCHZ`) groups on a volumetric tetrahedral mesh.
 
 The predictor is centered by a GCV-smoothed overall functional mean in the tetrahedral P1 finite-element space. The response preserves the prevalence-weighted binary coding:
 
@@ -9,7 +9,7 @@ The predictor is centered by a GCV-smoothed overall functional mean in the tetra
 
 ## Analysis targets
 
-The public suite contains four targets:
+The suite contains four targets:
 
 - `smoke_overall_mean`: validates input loading, response coding, and functional-mean preparation without a native model fit.
 - `h_stability`: fits one complete-data R1-fPLS model through `H = 6`, reports prefix separation, verifies the first perfectly separating prefix, and compares the intrinsic slider at `H = 4:6` with `H = 3` using tetrahedral FEM mass metrics. Native `Beta(H)` is compared over the same prefixes.
@@ -33,7 +33,7 @@ Raw data are external to Git. `PATH_APPLICATION_DATA` must contain:
 - `X_imputed.rds`
 - `Ycl.rds`
 
-The default local path is `/Users/pietrodonelli/Documents/University/projects/fPLS/fPLS-regression/data/brain`. Override it when configuring another machine.
+The default path is `data/brain` relative to the repository. Override it with `PATH_APPLICATION_DATA=/path/to/brain-data` when the inputs live elsewhere.
 
 Generated data, results, images, logs, queues, build products, libraries, and provenance artifacts are ignored by Git.
 
@@ -101,7 +101,7 @@ The complete-data R1-fPLS aggregate includes:
 
 The resampling aggregate includes fold diagnostics, the first-perfect-prefix distribution, all 50 intrinsic-slider comparisons with the complete-data `H = 3` map, descriptive summaries, regularization diagnostics, and resources.
 
-Generate the two application figure panels from accepted result files:
+Generate the two application figure panels from the recorded complete-data result files:
 
 ```sh
 make application_figure_panels

@@ -4,8 +4,8 @@ The tracked Affinity layout is `layouts/figures.af`. Generated panel and export 
 
 Two scripts reconstruct the application panels from the complete-data R1-fPLS result:
 
-- `scripts/A_latent_scores.R` verifies the accepted `H = 3` intrinsic coordinates and threshold, then produces the latent-score panels.
-- `scripts/A_slider.R` verifies the accepted intrinsic loading and calls `scripts/A_slider.py` through ParaView to render SCHZ, threshold, and CTRL connectivity states.
+- `scripts/A_latent_scores.R` verifies the recorded `H = 3` intrinsic coordinates and threshold, then produces the latent-score panels.
+- `scripts/A_slider.R` verifies the recorded complete-data intrinsic loading and calls `scripts/A_slider.py` through ParaView to render SCHZ, threshold, and CTRL connectivity states.
 
 Run both with:
 

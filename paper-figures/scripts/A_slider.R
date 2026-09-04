@@ -31,8 +31,8 @@ y_loadings <- as.numeric(read_matrix(file.path(raw_dir, "y_loadings.csv")))[seq_
 functional_mean <- drop(read_matrix(file.path(raw_dir, "functional_mean_locations.csv")))
 labels <- factor(readRDS(file.path(batch_dir, "prepared_data.rds"))$labels, levels = c("CTRL", "SCHZ"))
 slider <- standardized_intrinsic_fpls_slider(scores, x_loadings, y_loadings, h)
-accepted_loading <- drop(read_matrix(file.path(aggregate_dir, "intrinsic_fpls_slider_maps", "reconstruction_loading_h3.csv")))
-if (max(abs(slider$loading - accepted_loading)) > 1e-12) stop("H=3 loading disagrees with the accepted aggregate map.")
+recorded_loading <- drop(read_matrix(file.path(aggregate_dir, "intrinsic_fpls_slider_maps", "reconstruction_loading_h3.csv")))
+if (max(abs(slider$loading - recorded_loading)) > 1e-12) stop("H=3 loading disagrees with the recorded aggregate map.")
 score_data <- read.csv(file.path(aggregate_dir, "intrinsic_fpls_scores_H3.csv"), stringsAsFactors = FALSE)
 if (!identical(as.character(score_data$group), as.character(labels)) ||
     max(abs(score_data$intrinsic_slider_coordinate - slider$coordinate)) > 1e-12) {
@@ -44,7 +44,7 @@ if (length(threshold) != 1L || !is.finite(threshold)) stop("Expected one finite 
 state_scores <- c(SCHZ = mean(score_data$intrinsic_slider_coordinate[score_data$group == "SCHZ"]),
                   critical = threshold,
                   CTRL = mean(score_data$intrinsic_slider_coordinate[score_data$group == "CTRL"]))
-state_fields <- lapply(state_scores, function(value) functional_mean + value * accepted_loading)
+state_fields <- lapply(state_scores, function(value) functional_mean + value * recorded_loading)
 if (any(vapply(state_fields, function(value) length(value) != nrow(points) || any(!is.finite(value)), logical(1)))) {
   stop("Reconstructed connectivity states are not finite mesh-node fields.")
 }

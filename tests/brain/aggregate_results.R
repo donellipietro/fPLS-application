@@ -132,7 +132,7 @@ if (identical(requested, "slider_resampling")) {
       native_fits = resampling$fits,
       omitted_subjects_usage = "excluded_from_functional_mean_response_GCV_fit_and_slider",
       test_predictions_or_metrics = "not_computed",
-      complete_data_reference = "accepted_H3_intrinsic_slider_from_h_stability",
+      complete_data_reference = "recorded_H3_intrinsic_slider_from_h_stability",
       complete_data_reference_status = resampling$complete_data_reference_status,
       complete_data_reference_map_md5 = resampling$complete_data_reference_map_md5,
       overlap_caveat = "descriptive_stability_not_independent_validation"
