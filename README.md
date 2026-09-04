@@ -2,6 +2,8 @@
 
 This repository contains the native fdaPDE implementation of the fPLS task-based functional-connectivity application. It compares control (`CTRL`) and schizophrenia (`SCHZ`) groups on a volumetric tetrahedral mesh.
 
+The workflows correspond to the neuroimaging application section of the R1-fPLS article; the standardized score coordinate and functional-slider construction are derived in the supplementary section “Intrinsic R1-fPLS slider.”
+
 The predictor is centered by a GCV-smoothed overall functional mean in the tetrahedral P1 finite-element space. The response preserves the prevalence-weighted binary coding:
 
 - `CTRL`: `sqrt(p_SCHZ / p_CTRL)`
@@ -27,15 +29,21 @@ The exact threshold is selected from the oriented fitted response by maximizing 
 
 ## Data
 
-Raw data are external to Git. `PATH_APPLICATION_DATA` must contain:
+The preprocessed inputs are private and are not distributed with this repository. `PATH_APPLICATION_DATA` must contain:
 
-- `FEMbasis.Rds`
-- `X_imputed.rds`
-- `Ycl.rds`
+| File | MD5 |
+| --- | --- |
+| `FEMbasis.Rds` | `59433e991190b029f6f190b00c4f878a` |
+| `X_imputed.rds` | `bf40b1320a4b0b115117d922ac2d08c3` |
+| `Ycl.rds` | `e99aba962f10e0384d1897365a028bca` |
 
 The default path is `data/brain` relative to the repository. Override it with `PATH_APPLICATION_DATA=/path/to/brain-data` when the inputs live elsewhere.
 
 Generated data, results, images, logs, queues, build products, libraries, and provenance artifacts are ignored by Git.
+
+## Prerequisites
+
+The analysis runtime requires R, GNU Make, a C++ compiler, and Eigen. Local parallel execution additionally requires GNU Parallel; the `hpc-torque` profile requires a PBS client providing `qsub`. Dependencies used only to generate manuscript panels are listed separately in [paper-figures/README.md](paper-figures/README.md).
 
 ## Local setup and execution
 
@@ -106,5 +114,9 @@ Generate the two application figure panels from the recorded complete-data resul
 ```sh
 make application_figure_panels
 ```
+
+## Reproducibility limits
+
+This repository starts from the finite-element basis, an already imputed predictor matrix, and group labels. It does not reconstruct upstream fMRI preprocessing, missing-value imputation, or selection of the seed region. The retained workflows are descriptive fitted-sample analyses and do not provide out-of-sample validation. Numerical reproduction requires the private preprocessed inputs and the pinned native fdaPDE stack.
 
 See [tests/README.md](tests/README.md), [paper-figures/README.md](paper-figures/README.md), and [docs/provenance.md](docs/provenance.md) for suite, figure-source, and provenance details.

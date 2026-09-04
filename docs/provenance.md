@@ -9,7 +9,7 @@ The application equations, response coding, and data layout originate from:
 - primary workflow: `analysis/main_CNTRLvsSCHZ.R`
 - supporting workflow: `analysis/sensitivity_analysis.R`
 
-The active centering method is the GCV-smoothed overall functional mean. The historical group-mean overwrite is not active.
+The active centering method is the GCV-smoothed overall functional mean.
 
 ## Native stack
 
@@ -25,7 +25,15 @@ The R1-fPLS driver uses the native fdaPDE implementation. The fPCR comparator im
 
 ## Data and preprocessing
 
-The external input directory contains `FEMbasis.Rds`, `X_imputed.rds`, and `Ycl.rds`. The response is relabelled from `CONTROL` to `CTRL` and coded as:
+The private preprocessed inputs are not distributed with this repository. Their frozen checksums are:
+
+| File | MD5 |
+| --- | --- |
+| `FEMbasis.Rds` | `59433e991190b029f6f190b00c4f878a` |
+| `X_imputed.rds` | `bf40b1320a4b0b115117d922ac2d08c3` |
+| `Ycl.rds` | `e99aba962f10e0384d1897365a028bca` |
+
+The response is relabelled from `CONTROL` to `CTRL` and coded as:
 
 - `CTRL`: `sqrt(p_SCHZ / p_CTRL)`
 - `SCHZ`: `-sqrt(p_CTRL / p_SCHZ)`
