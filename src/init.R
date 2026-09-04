@@ -6,7 +6,6 @@
 
 # Libraries ----
 suppressMessages(library(jsonlite))
-suppressMessages(library(RColorBrewer))
 
 # Sources ----
 source("src/utils/options.R")

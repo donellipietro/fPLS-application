@@ -148,14 +148,3 @@ get_script_path <- function() {
   # Fallback
   return(NULL)
 }
-#' Open a file or directory with the operating system default application.
-#'
-#' @param path File or directory path.
-#' @return The value produced by `open`.
-open <- function(path) {
-  if (.Platform$OS.type == "windows") {
-    return(shell.exec(path))
-  } else {
-    return(invisible(system2("open", path)))
-  }
-}

@@ -146,8 +146,6 @@ ensure_ipopt_options() {
 }
 
 compile_flags() {
-  local eigen_plugin="${PATH_CPP}/include/eigen_arraybase_plugin.h"
-  local eigen_plugin_flags=()
   local configured_flags
   local flag
 
@@ -171,14 +169,6 @@ compile_flags() {
     )
   fi
 
-  if [[ -n "${SINGULARITY_IMAGE:-}" || -n "${DOCKER_IMAGE:-}" ]]; then
-    if [[ ! -f "${eigen_plugin}" ]]; then
-      echo "Error: Eigen compatibility plugin not found: ${eigen_plugin}" >&2
-      exit 1
-    fi
-    eigen_plugin_flags=("-DEIGEN_ARRAYBASE_PLUGIN=\"${eigen_plugin}\"")
-  fi
-
   cxx_flags=()
   for flag in "${configured_flags[@]}"; do
     cxx_flags+=("${flag}")
@@ -187,9 +177,6 @@ compile_flags() {
     for flag in "${include_flags[@]}"; do
       cxx_flags+=("${flag}")
     done
-  fi
-  if [[ "${#eigen_plugin_flags[@]}" -gt 0 ]]; then
-    cxx_flags+=("${eigen_plugin_flags[@]}")
   fi
   if [[ -n "${LDFLAGS:-}" ]]; then
     split_flags "${LDFLAGS}"
