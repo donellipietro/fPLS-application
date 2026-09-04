@@ -9,8 +9,8 @@ The application compares control and schizophrenia groups using imputed brain co
 - Fit native R1-fPLS and the fPCR comparator on the 3D brain mesh with functionally centered data, progressive component prefixes, and explicitly controlled GCV grids, probe counts, and seeds.
 - Use the application-expanded GCV grid `10^(-15:2)` for the functional mean, fPLS, and fPCA. It contains the simulation grid and the historical mean value `1e-2`; its lower extension follows controlled H=6 runs selecting `1e-9` and then `1e-12` for fPLS loading 2. A production boundary selection is warned, recorded, and labelled in run status without terminating the analysis. For each boundary-selected fPLS loading, the native fit saves the full candidate-wise GCV curve plus both the fitted selection and the replayed numerical minimum in `fpls_loading_gcv.csv`; a replay difference is diagnostic and nonfatal.
 - Fit a single sequential `H = 6` model, report prefix-wise reconstructed X variance, Y variance, and X--Y cross-covariance using the observation-location Frobenius definitions from the simulation study, and verify `H = 3` as the first prefix with perfect in-sample separation.
-- Use the linear SVM only as a geometric construction on standardized fPLS scores. The primary interpretation map is the slider loading `f_H = R_H D_H q_H`; compare only `H = 4:6` with the `H = 3` reference through the tetrahedral FEM mass correlation `rho_H` and relative mass error `e_H`.
-- Assess sampling stability with 10 repeats of stratified five-fold delete-one-fold resampling. Each training subset fits one progressive `H = 6` R1-fPLS model, rechecks the first perfectly separating prefix, constructs `f_3` with the same fixed `C = 1e6` rule, and compares it with the accepted complete-data `f_3`. The omitted fold is excluded from every fitted quantity and used only afterward for held-out explained-structure curves.
+- Use the standardized intrinsic fPLS response direction as the primary interpretation: `q_H^PLS = D_H nu_H / ||D_H nu_H||` and `f_H^PLS = R_H D_H q_H^PLS`. Compare `H = 4:6` with the `H = 3` reference through the tetrahedral FEM mass correlation `rho_H` and relative mass error `e_H`; retain the standardized linear-SVM direction only as a sensitivity analysis.
+- Assess sampling stability with 10 repeats of stratified five-fold delete-one-fold resampling. Each training subset fits one progressive `H = 6` R1-fPLS model, rechecks the first perfectly separating prefix, derives its intrinsic `f_3^PLS` from the saved native scores and loadings, and compares it with the accepted complete-data reference. The omitted fold is excluded from every fitted quantity and used only afterward for held-out explained-structure curves.
 - Record selected fPLS/fPCA lambdas, component iterations, objective/monotonicity diagnostics, non-finite/failure status, wall-clock time, peak RAM, input and native-binary MD5 checksums, runtime profile, and exact fdaPDE commits.
 
 Raw brain data and generated outputs are intentionally outside Git. The default local data path is the historical ignored application input folder:
@@ -47,7 +47,7 @@ Run the non-expensive application smoke check, which validates and records raw i
 SMOKE_TEST=1 make run_test TEST_SUITE=brain TEST_NAME=smoke_overall_mean
 ```
 
-The H=6 run supplies the sensitivity analysis without a second fit. For each prefix `H = 3:6`, the aggregation standardizes the retained scores and fits a linear maximum-margin boundary with positive orientation toward CTRL. The primary interpretation map is the X-reconstruction loading for a one-unit slider displacement along the standardized maximum-margin axis, `f_H = R_H D_H q_H`, where `D_H` contains the score standard deviations and `q_H` is the unit SVM normal. Only `f_4`, `f_5`, and `f_6` are compared with `f_3`, using `rho_H` and `e_H`; no Gram--Schmidt basis is used. The same accepted fit also supplies observation-location Frobenius diagnostics for reconstructed X variance, Y variance, and X--Y cross-covariance. A native failure is recorded in the aggregate status and returned as a nonzero command status:
+The H=6 run supplies the prefix sensitivity analysis without a second fit. For each prefix `H = 3:6`, aggregation standardizes the retained scores and constructs the intrinsic response direction `q_H^PLS = D_H nu_H / ||D_H nu_H||`. The primary interpretation map is the X-reconstruction loading for a one-unit displacement along this direction, `f_H^PLS = R_H D_H q_H^PLS`. Only `f_4^PLS`, `f_5^PLS`, and `f_6^PLS` are compared with `f_3^PLS`, using `rho_H` and `e_H`; no Gram--Schmidt basis is used. A standardized linear SVM is aggregated separately as a sensitivity analysis. The same accepted fit also supplies observation-location Frobenius diagnostics for reconstructed X variance, Y variance, and X--Y cross-covariance. A native failure is recorded in the aggregate status and returned as a nonzero command status:
 
 ```sh
 make run_test TEST_SUITE=brain TEST_NAME=h_stability
@@ -63,9 +63,10 @@ make h_stability_tail
 The helpers follow H=6 by default.
 
 Completed diagnostics are written to `results/brain/aggregate/h_stability/`:
-`separation_by_H.csv`, `explained_structure_by_H.csv`, `slider_stability_by_H.csv`,
-`maximum_margin_sensitivity_by_H.csv`, `maximum_margin_boundaries_by_H.csv`,
-and the slider maps under `maximum_margin_maps/`. Explained-structure and slider figures are
+`separation_by_H.csv`, `explained_structure_by_H.csv`,
+`intrinsic_fpls_slider_stability_by_H.csv`, `intrinsic_fpls_vs_svm_H3.csv`,
+and the primary slider maps under `intrinsic_fpls_slider_maps/`. The older
+maximum-margin files remain available as sensitivity artifacts. Explained-structure and slider figures are
 written under `images/brain/aggregate/h_stability/`.
 
 The `paraview/` subdirectory contains one tetrahedral VTU with raw and comparison-normalized
@@ -88,10 +89,10 @@ construct the stratified fold assignment. The omitted 20% is excluded from the n
 centering, response recoding, score scaling, and slider construction. Slider stability remains a
 descriptive sampling analysis because its complete-data reference overlaps each training subset.
 
-Every fit re-estimates the functional mean, response coding, GCV penalties, score scaling, and
-fixed-`C = 1e6` CTRL-oriented H=3 slider using its training subjects only. Aggregation reports the
+Every fit re-estimates the functional mean, response coding, GCV penalties, and intrinsic H=3
+slider using its training subjects only. Aggregation reports the
 distribution of the first perfectly separating training prefix and compares each available
-training `f_3` with the complete-data `f_3` through FEM mass `rho_H3` and relative error `e_H3`.
+training `f_3^PLS` with the complete-data `f_3^PLS` through FEM mass `rho_H3` and relative error `e_H3`.
 The overlapping training subsets are descriptive resamples, not independent replicates.
 
 After fitting, the same saved models are also used for a separate held-out structural evaluation.

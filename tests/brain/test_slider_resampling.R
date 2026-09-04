@@ -61,6 +61,20 @@ stopifnot(
   identical(result$cross_validation$test_data_used, FALSE)
 )
 
+response_loadings <- c(0.2, -0.3, 0.5)
+score_multipliers <- c(-2, 3, 0.5)
+intrinsic <- standardized_intrinsic_fpls_slider(scores, diag(3), response_loadings, 3L)
+rescaled <- standardized_intrinsic_fpls_slider(
+  sweep(scores, 2L, score_multipliers, "*"),
+  sweep(diag(3), 2L, score_multipliers, "/"),
+  response_loadings / score_multipliers,
+  3L
+)
+stopifnot(
+  isTRUE(all.equal(intrinsic$coordinate, rescaled$coordinate)),
+  isTRUE(all.equal(intrinsic$loading, rescaled$loading))
+)
+
 held_out_model <- model
 held_out_model$results$Y_loadings <- matrix(c(0, 0, 0.5), nrow = 1L)
 held_out_model$results$Y_hat <- list(
@@ -164,6 +178,11 @@ for (value in list(postprocess_evaluation, postprocess_evaluation_2)) {
   dir.create(model_dir, recursive = TRUE)
   model_R1_fPLS <- held_out_model
   save(model_R1_fPLS, file = file.path(model_dir, "batch_1_fitted_model_R1_fPLS.RData"))
+  raw_dir <- file.path(model_dir, "raw", "R1_fPLS")
+  dir.create(raw_dir, recursive = TRUE)
+  write.csv(scores, file.path(raw_dir, "x_latent_scores.csv"), row.names = FALSE)
+  write.csv(rbind(diag(3), 0), file.path(raw_dir, "x_loadings_coefficients.csv"), row.names = FALSE)
+  write.csv(matrix(c(1, 0, 0), nrow = 1L), file.path(raw_dir, "y_loadings.csv"), row.names = FALSE)
 }
 complete_data_dir <- file.path(
   root, "results", "brain", "h_stability", "h_stability_H6", "batch_1"
@@ -209,7 +228,7 @@ stopifnot(
   length(training_only$cross_validation$test_indices) > 0L
 )
 reference_dir <- file.path(
-  root, "results", "brain", "aggregate", "h_stability", "maximum_margin_maps"
+  root, "results", "brain", "aggregate", "h_stability", "intrinsic_fpls_slider_maps"
 )
 dir.create(reference_dir, recursive = TRUE)
 jsonlite::write_json(
@@ -239,6 +258,7 @@ write.csv(
 )
 write.csv(matrix(1:4, nrow = 1L), file.path(reference_raw_dir, "elements.csv"), row.names = FALSE)
 evaluation <- result
+evaluation$scenario <- postprocess_evaluation$scenario
 evaluation$n_comp <- 3L
 evaluation$slider_h3 <- c(1, 0, 0, 0)
 evaluation$cross_validation$train_indices <- 1:8
@@ -253,6 +273,7 @@ evaluation$regularization_boundaries <- data.frame(
   selected_at_upper_boundary = FALSE
 )
 evaluation_2 <- evaluation
+evaluation_2$scenario <- postprocess_evaluation_2$scenario
 evaluation_2$cross_validation$fold_index <- 2L
 aggregated <- aggregate_slider_resampling(
   list(evaluation, evaluation_2),

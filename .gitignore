@@ -20,7 +20,13 @@
 /cpp/ipopt.opt
 /cpp/*/fit_model*
 /.idea/
-HANDOFF*.md
+*HANDOFF*.md
+
+# generated manuscript figure products
+/paper-figures/panels
+/paper-figures/exports
+/paper-figures/layouts/*
+!/paper-figures/layouts/*.af
 
 # exceptions
 !/data/mesh/

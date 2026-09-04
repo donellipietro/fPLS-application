@@ -213,14 +213,21 @@ if (requested %in% c("slider_resampling", "fpcr_slider_resampling")) {
         complete_reference_overlap_caveat = "descriptive_stability_not_independent_validation"
       ),
       slider = list(
-        definition = "R_H_times_score_SD_times_unit_standardized_SVM_normal",
+        definition = if (identical(resampling$dimension_reducer, "R1-fPLS")) {
+          "R_H_times_D_H_times_unit_D_H_nu_H"
+        } else "R_H_times_score_SD_times_unit_standardized_SVM_normal",
         retained_components = 3L,
-        fixed_SVM_cost = 1e6,
+        fixed_SVM_cost = if (identical(resampling$dimension_reducer, "R1-fPLS")) {
+          "not_used_for_primary_intrinsic_slider"
+        } else 1e6,
         class_orientation = "positive_is_CTRL",
         posthoc_sign_alignment = FALSE,
         comparable_training_fits = resampling$comparable_H3_fits,
         all_training_fits_H3_hard_margin_separable = resampling$all_H3_hard_margin_separable,
-        metrics = c("tetrahedral_P1_FEM_mass_correlation_rho_H3", "relative_FEM_mass_error_e_H3")
+        metrics = c("tetrahedral_P1_FEM_mass_correlation_rho_H3", "relative_FEM_mass_error_e_H3"),
+        summary = if (identical(resampling$dimension_reducer, "R1-fPLS")) {
+          "intrinsic_fpls_slider_resampling_summary.csv"
+        } else "slider_resampling_summary.csv"
       ),
       training_prefix_separation = list(
         prefixes = 1:6,
@@ -251,7 +258,10 @@ if (requested %in% c("slider_resampling", "fpcr_slider_resampling")) {
         fold_curves = "slider_resampling_test_explained_structure_by_fold.csv",
         descriptive_summary = "slider_resampling_test_explained_structure_summary.csv",
         native_fit_application_commit = test_structure$native_application_commit,
-        postprocessing_application_commit = trimws(system2("git", c("rev-parse", "HEAD"), stdout = TRUE))[1]
+        postprocessing_application_HEAD = trimws(system2("git", c("rev-parse", "HEAD"), stdout = TRUE))[1],
+        postprocessing_worktree_dirty = length(system2(
+          "git", c("status", "--porcelain"), stdout = TRUE
+        )) > 0L
       ),
       all_test_data_unused_for_fitting_and_slider_stability = resampling$all_test_data_unused,
       held_out_test_data_used_for_postfit_explained_structure = TRUE,
@@ -525,6 +535,7 @@ if (!is.null(separation)) {
 
 beta_stability_summary <- NULL
 maximum_margin_summary <- NULL
+intrinsic_fpls_sliders <- NULL
 score_space_separation <- NULL
 classifier_formula_max_abs_error <- NULL
 complete_reducer <- if (requested %in% c("fpcr_h_stability", "fpcr_h20_separation")) {
@@ -573,6 +584,104 @@ if (requested %in% complete_data_targets && has_complete_fit) {
     require_hard_margin = identical(complete_reducer, "R1-fPLS"),
     compute_classifier_maps = identical(complete_reducer, "R1-fPLS")
   )
+  if (identical(complete_reducer, "R1-fPLS")) {
+    intrinsic_fpls_sliders <- setNames(lapply(3:complete_h, function(h) {
+      standardized_intrinsic_fpls_slider(complete_scores, x_loadings, y_loadings, h)
+    }), as.character(3:complete_h))
+    intrinsic_reference <- matrix(intrinsic_fpls_sliders[["3"]]$loading, ncol = 1L)
+    mass_elements <- matrix(as.integer(elements), ncol = 4L)
+    mass_volumes <- tetrahedral_volumes(points, mass_elements)
+    intrinsic_stability <- do.call(rbind, lapply(4:complete_h, function(h) {
+      cbind(
+        reference_components = 3L,
+        retained_components = h,
+        mass_stability(
+          intrinsic_reference,
+          matrix(intrinsic_fpls_sliders[[as.character(h)]]$loading, ncol = 1L),
+          mass_elements,
+          mass_volumes
+        )
+      )
+    }))
+    intrinsic_stability$rho_H <- intrinsic_stability$mass_correlation
+    intrinsic_stability$e_H <- intrinsic_stability$relative_mass_error
+    write.csv(
+      intrinsic_stability[c(
+        "reference_components", "retained_components", "rho_H", "e_H",
+        "reference_mass_norm", "candidate_mass_norm", "sign_alignment"
+      )],
+      file.path(aggregate_dir, "intrinsic_fpls_slider_stability_by_H.csv"),
+      row.names = FALSE
+    )
+    pad <- function(values) c(values, rep(NA_real_, complete_h - length(values)))
+    intrinsic_coordinates <- do.call(rbind, lapply(3:complete_h, function(h) {
+      value <- intrinsic_fpls_sliders[[as.character(h)]]
+      row <- c(
+        retained_components = h,
+        response_norm = value$response_norm,
+        setNames(pad(value$unit_standardized_normal), paste0("q_t", seq_len(complete_h))),
+        setNames(pad(value$score_center), paste0("score_center_t", seq_len(complete_h))),
+        setNames(pad(value$score_scale), paste0("score_scale_t", seq_len(complete_h)))
+      )
+      as.data.frame(as.list(row), check.names = FALSE)
+    }))
+    write.csv(
+      intrinsic_coordinates,
+      file.path(aggregate_dir, "intrinsic_fpls_slider_coordinates_by_H.csv"),
+      row.names = FALSE
+    )
+    intrinsic_map_dir <- file.path(aggregate_dir, "intrinsic_fpls_slider_maps")
+    dir.create(intrinsic_map_dir, recursive = TRUE, showWarnings = FALSE)
+    for (h in 3:complete_h) {
+      write.csv(
+        data.frame(coefficient = intrinsic_fpls_sliders[[as.character(h)]]$loading),
+        file.path(intrinsic_map_dir, glue::glue("reconstruction_loading_h{h}.csv")),
+        row.names = FALSE
+      )
+    }
+    h3_svm <- maximum_margin_summary$fits[["3"]]
+    h3_intrinsic <- intrinsic_fpls_sliders[["3"]]
+    h3_comparison <- mass_stability(
+      intrinsic_reference,
+      matrix(maximum_margin_summary$reconstruction_maps[["3"]], ncol = 1L),
+      mass_elements,
+      mass_volumes
+    )
+    write.csv(
+      data.frame(
+        latent_normal_cosine = abs(sum(
+          h3_intrinsic$unit_standardized_normal * h3_svm$unit_standardized_normal
+        )),
+        decision_score_correlation = abs(cor(h3_intrinsic$coordinate, h3_svm$decision)),
+        functional_slider_mass_correlation = abs(h3_comparison$mass_correlation)
+      ),
+      file.path(aggregate_dir, "intrinsic_fpls_vs_svm_H3.csv"),
+      row.names = FALSE
+    )
+    h3_threshold <- separation$threshold[separation$prefix_components == 3L]
+    h3_threshold_standardized <- (
+      h3_threshold - sum(y_loadings[1, 1:3] * h3_intrinsic$score_center)
+    ) / h3_intrinsic$response_norm
+    standardized_h3 <- sweep(
+      sweep(complete_scores[, 1:3, drop = FALSE], 2L, h3_intrinsic$score_center, "-"),
+      2L,
+      h3_intrinsic$score_scale,
+      "/"
+    )
+    write.csv(
+      data.frame(
+        subject = seq_len(nrow(complete_scores)),
+        group = prepared_data$labels,
+        z1 = standardized_h3[, 1],
+        z2 = standardized_h3[, 2],
+        z3 = standardized_h3[, 3],
+        intrinsic_slider_coordinate = h3_intrinsic$coordinate,
+        intrinsic_slider_threshold = h3_threshold_standardized
+      ),
+      file.path(aggregate_dir, "intrinsic_fpls_scores_H3.csv"),
+      row.names = FALSE
+    )
+  }
   score_space_separation <- maximum_margin_summary$diagnostics[c(
     "retained_components", "hard_margin", "accuracy", "sensitivity",
     "specificity", "auc", "geometric_margin_standardized_scores",
@@ -746,6 +855,10 @@ if (requested %in% complete_data_targets && has_complete_fit) {
       drop(values / sqrt(drop(mass_crossprod(values, values, elements, volumes))))
     }
     paraview_fields <- list()
+    paraview_fields[["fPLS_intrinsic_H3"]] <- intrinsic_fpls_sliders[["3"]]$loading
+    paraview_fields[["fPLS_intrinsic_CTRL_unit_H3"]] <- mass_unit(
+      intrinsic_fpls_sliders[["3"]]$loading
+    )
     for (h in 3:6) {
       beta_h <- drop(beta_coefficients[[as.character(h)]])
       gamma_h <- drop(maximum_margin_summary$classifier_maps[[as.character(h)]])
@@ -844,6 +957,15 @@ write_json(
       "not_a_primary_target_for_exploratory_fpcr_separation_diagnostic"
     } else if (is.null(maximum_margin_summary)) {
       paste0("requires_H", complete_h, "_fit")
+    } else if (identical(complete_reducer, "R1-fPLS")) {
+      list(
+        reference = "H3_standardized_intrinsic_fPLS_slider_loading",
+        comparisons = "H4_to_H6_standardized_intrinsic_fPLS_slider_loadings",
+        definition = "R_H_times_D_H_times_unit_D_H_nu_H",
+        metrics = c("tetrahedral_P1_FEM_mass_correlation_rho_H", "relative_FEM_mass_error_e_H"),
+        Gram_Schmidt_rotation = "removed_from_active_analysis",
+        aggregate = "intrinsic_fpls_slider_stability_by_H.csv"
+      )
     } else {
       list(
         reference = "H3_maximum_margin_SVM_slider_loading",

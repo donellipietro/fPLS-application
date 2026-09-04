@@ -2,6 +2,7 @@
 # Define commands ----
 SHELL := /bin/bash
 RSCRIPT ?= Rscript
+PVPYTHON ?= pvpython
 
 ACTIVE_ENV_PROFILE := $(strip $(shell if [ -f .env ]; then set -a; . ./.env >/dev/null 2>&1; printf '%s' "$$TESTBENCH_PROFILE"; fi))
 REQUESTED_PROFILE := $(strip $(PROFILE))
@@ -89,10 +90,18 @@ COMPILE_STRATEGY := $(call config_value,COMPILE_STRATEGY)
         ensure_env \
         compile compile_all \
         clean_tmp clean_compiled clean_links clean clean_test distclean \
-        run_test inspect_results h_stability_logs h_stability_tail
+        run_test inspect_results h_stability_logs h_stability_tail \
+        application_figure_panels
 
 
 all: build
+
+
+# Manuscript figure panels ----
+## Regenerate the independent application panels used by the Affinity layout.
+application_figure_panels:
+	@$(RSCRIPT) paper-figures/scripts/A_latent_scores.R
+	@PVPYTHON="$(PVPYTHON)" $(RSCRIPT) paper-figures/scripts/A_slider.R
 
 
 # Config targets ----

@@ -371,7 +371,8 @@ aggregate_slider_resampling <- function(evaluations, aggregate_dir, image_dir, c
     cfg$PATH_RESULTS, "brain", "aggregate", reference_target, "application_run_status.json"
   )
   reference_file <- file.path(
-    cfg$PATH_RESULTS, "brain", "aggregate", reference_target, "maximum_margin_maps",
+    cfg$PATH_RESULTS, "brain", "aggregate", reference_target,
+    if (identical(reducer, "R1-fPLS")) "intrinsic_fpls_slider_maps" else "maximum_margin_maps",
     "reconstruction_loading_h3.csv"
   )
   if (!file.exists(reference_status_file) || !file.exists(reference_file)) {
@@ -436,7 +437,29 @@ aggregate_slider_resampling <- function(evaluations, aggregate_dir, image_dir, c
   hmin_distribution$proportion <- hmin_distribution$training_fits / nrow(fold_diagnostics)
 
   comparisons <- do.call(rbind, lapply(evaluations, function(value) {
-    candidate <- matrix(value$slider_h3, ncol = 1L)
+    candidate <- if (identical(reducer, "R1-fPLS")) {
+      raw_dir <- file.path(
+        cfg$PATH_RESULTS, "brain", "slider_resampling", value$scenario,
+        "batch_1", "raw", "R1_fPLS"
+      )
+      raw_files <- file.path(raw_dir, c(
+        "x_latent_scores.csv", "x_loadings_coefficients.csv", "y_loadings.csv"
+      ))
+      if (length(raw_files) != 3L || !all(file.exists(raw_files))) {
+        stop("intrinsic slider resampling requires native scores and loadings for ", value$scenario)
+      }
+      read_matrix <- function(path) as.matrix(suppressWarnings(read.csv(
+        path, check.names = FALSE
+      )))
+      matrix(standardized_intrinsic_fpls_slider(
+        read_matrix(raw_files[[1]]),
+        read_matrix(raw_files[[2]]),
+        read_matrix(raw_files[[3]]),
+        3L
+      )$loading, ncol = 1L)
+    } else {
+      matrix(value$slider_h3, ncol = 1L)
+    }
     comparison <- mass_stability(reference, candidate, elements, volumes, sign_align = FALSE)
     cbind(
       repeat_index = value$cross_validation$repeat_index,
@@ -472,8 +495,11 @@ aggregate_slider_resampling <- function(evaluations, aggregate_dir, image_dir, c
 
   write.csv(fold_diagnostics, file.path(aggregate_dir, "slider_resampling_fold_diagnostics.csv"), row.names = FALSE)
   write.csv(hmin_distribution, file.path(aggregate_dir, "slider_resampling_Hmin_distribution.csv"), row.names = FALSE)
-  write.csv(comparisons, file.path(aggregate_dir, "slider_resampling_vs_complete_H3.csv"), row.names = FALSE)
-  write.csv(summary, file.path(aggregate_dir, "slider_resampling_summary.csv"), row.names = FALSE)
+  stability_stem <- if (identical(reducer, "R1-fPLS")) {
+    "intrinsic_fpls_slider_resampling"
+  } else "slider_resampling"
+  write.csv(comparisons, file.path(aggregate_dir, paste0(stability_stem, "_vs_complete_H3.csv")), row.names = FALSE)
+  write.csv(summary, file.path(aggregate_dir, paste0(stability_stem, "_summary.csv")), row.names = FALSE)
   write.csv(
     regularization_boundaries,
     file.path(aggregate_dir, "slider_resampling_regularization_boundary_diagnostics.csv"),
@@ -493,7 +519,7 @@ aggregate_slider_resampling <- function(evaluations, aggregate_dir, image_dir, c
     labs(x = NULL, y = paste(reducer, "training-fit comparison with complete-data H=3 slider")) +
     theme_bw() +
     theme(legend.position = "none")
-  ggsave(plot_file(image_dir, "slider_resampling_vs_complete_H3"), stability_plot, width = 7, height = 4.5, dpi = 180)
+  ggsave(plot_file(image_dir, paste0(stability_stem, "_vs_complete_H3")), stability_plot, width = 7, height = 4.5, dpi = 180)
 
   hmin_plot <- ggplot(hmin_distribution, aes(first_H, proportion)) +
     geom_col(fill = "#007C91") +
