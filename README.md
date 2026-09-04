@@ -1,177 +1,110 @@
 # fPLS Neuroimaging Application
 
-This repository ports the fPLS resting-state fMRI connectivity application to the current native fdaPDE C++ implementation. It is scoped to the reviewer-facing application analysis, not to the historical simulation suites.
+This repository contains the native fdaPDE implementation of the fPLS resting-state fMRI connectivity application. It compares control (`CTRL`) and schizophrenia (`SCHZ`) groups on a volumetric tetrahedral mesh.
 
-The application compares control and schizophrenia groups using imputed brain connectivity maps on a volumetric tetrahedral mesh. The response is the historical CNTRL-vs-SCHZ binary contrast recoded with prevalence weights. The empirical overall predictor mean is smoothed on the tetrahedral P1 finite-element space and calibrated by GCV before centering. The complete-data fit uses all subjects for that mean; every resampling fit estimates it from its training subjects only. The historical script's accidental overwrite from `overall_mean` to `group_means` is not preserved as active behavior.
+The predictor is centered by a GCV-smoothed overall functional mean in the tetrahedral P1 finite-element space. The response preserves the prevalence-weighted binary coding:
 
-## Analysis Scope
+- `CTRL`: `sqrt(p_SCHZ / p_CTRL)`
+- `SCHZ`: `-sqrt(p_CTRL / p_SCHZ)`
 
-- Fit native R1-fPLS and the fPCR comparator on the 3D brain mesh with functionally centered data, progressive component prefixes, and explicitly controlled GCV grids, probe counts, and seeds.
-- Use the application-expanded GCV grid `10^(-15:2)` for the functional mean, fPLS, and fPCA. It contains the simulation grid and the historical mean value `1e-2`; its lower extension follows controlled H=6 runs selecting `1e-9` and then `1e-12` for fPLS loading 2. A production boundary selection is warned, recorded, and labelled in run status without terminating the analysis. For each boundary-selected fPLS loading, the native fit saves the full candidate-wise GCV curve plus both the fitted selection and the replayed numerical minimum in `fpls_loading_gcv.csv`; a replay difference is diagnostic and nonfatal.
-- Fit a single sequential `H = 6` model, report prefix-wise reconstructed X variance, Y variance, and X--Y cross-covariance using the observation-location Frobenius definitions from the simulation study, and verify `H = 3` as the first prefix with perfect in-sample separation.
-- Use the standardized intrinsic fPLS response direction as the primary interpretation: `q_H^PLS = D_H nu_H / ||D_H nu_H||` and `f_H^PLS = R_H D_H q_H^PLS`. Compare `H = 4:6` with the `H = 3` reference through the tetrahedral FEM mass correlation `rho_H` and relative mass error `e_H`; retain the standardized linear-SVM direction only as a sensitivity analysis.
-- Assess sampling stability with 10 repeats of stratified five-fold delete-one-fold resampling. Each training subset fits one progressive `H = 6` R1-fPLS model, rechecks the first perfectly separating prefix, derives its intrinsic `f_3^PLS` from the saved native scores and loadings, and compares it with the accepted complete-data reference. The omitted fold is excluded from every fitted quantity and used only afterward for held-out explained-structure curves.
-- Record selected fPLS/fPCA lambdas, component iterations, objective/monotonicity diagnostics, non-finite/failure status, wall-clock time, peak RAM, input and native-binary MD5 checksums, runtime profile, and exact fdaPDE commits.
+## Analysis targets
 
-Raw brain data and generated outputs are intentionally outside Git. The default local data path is the historical ignored application input folder:
+The public suite contains four targets:
 
-```sh
-/Users/pietrodonelli/Documents/University/projects/fPLS/fPLS-regression/data/brain
+- `smoke_overall_mean`: validates input loading, response coding, and functional-mean preparation without a native model fit.
+- `h_stability`: fits one complete-data R1-fPLS model through `H = 6`, reports prefix separation, verifies the first perfectly separating prefix, and compares the intrinsic slider at `H = 4:6` with `H = 3` using tetrahedral FEM mass metrics. Native `Beta(H)` is compared over the same prefixes.
+- `slider_resampling`: runs 10 repeats of stratified five-fold delete-one-fold sampling, for 50 training-only R1-fPLS fits. Each fit re-estimates centering, response coding, regularization, and the intrinsic `H = 3` slider. Omitted subjects define the perturbation and are not used for fitted quantities or metrics.
+- `fpcr_h20_separation`: fits the complete-data fPCR comparator through `H = 20` and reports prefix separation with its fPCA GCV diagnostics.
+
+For retained scores `T_H`, component standard deviations `D_H`, X loadings `R_H`, and response loadings `nu_H`, the intrinsic fPLS direction and functional slider are
+
+```text
+q_H = D_H nu_H / ||D_H nu_H||
+f_H = R_H D_H q_H.
 ```
 
-Override it with `PATH_APPLICATION_DATA=/path/to/brain-data`.
+The exact threshold is selected from the oriented fitted response by maximizing sensitivity plus specificity. At `H = 3`, it is transformed into standardized intrinsic-slider coordinates and saved with the subject scores.
 
-The native fdaPDE stack is cloned locally into the ignored `libraries/fdaPDE-cpp` directory on `develop_fPLS`; the application does not run against the simulation repository checkout.
+## Data
 
-## Minimal Local Workflow
+Raw data are external to Git. `PATH_APPLICATION_DATA` must contain:
 
-Write the profile and create generated directories:
+- `FEMbasis.Rds`
+- `X_imputed.rds`
+- `Ycl.rds`
+
+The default local path is `/Users/pietrodonelli/Documents/University/projects/fPLS/fPLS-regression/data/brain`. Override it when configuring another machine.
+
+Generated data, results, images, logs, queues, build products, libraries, and provenance artifacts are ignored by Git.
+
+## Local setup and execution
+
+Create the environment, directories, R dependencies, JSON headers, and pinned fdaPDE checkout:
 
 ```sh
-PATH_FDAPDE_CPP=/Users/pietrodonelli/Documents/University/projects/fPLS/fPLS-simulation-study/libraries/fdaPDE-cpp \
+make build PROFILE=macbook
+```
+
+An existing fdaPDE checkout can be used without modification:
+
+```sh
+PATH_FDAPDE_CPP=/path/to/fdaPDE-cpp \
 FDAPDE_CPP_MANAGED=false \
-Rscript config.R --profile macbook --write-env
-
-Rscript config.R --profile macbook --create-dirs
+make build PROFILE=macbook
 ```
 
-Compile the native 3D driver:
+Compile and run targets with:
 
 ```sh
 make compile MODEL=brain TARGET=fit_model
-```
-
-Run the non-expensive application smoke check, which validates and records raw input preparation but skips the native functional-mean and model fits:
-
-```sh
 SMOKE_TEST=1 make run_test TEST_SUITE=brain TEST_NAME=smoke_overall_mean
-```
-
-The H=6 run supplies the prefix sensitivity analysis without a second fit. For each prefix `H = 3:6`, aggregation standardizes the retained scores and constructs the intrinsic response direction `q_H^PLS = D_H nu_H / ||D_H nu_H||`. The primary interpretation map is the X-reconstruction loading for a one-unit displacement along this direction, `f_H^PLS = R_H D_H q_H^PLS`. Only `f_4^PLS`, `f_5^PLS`, and `f_6^PLS` are compared with `f_3^PLS`, using `rho_H` and `e_H`; no Gram--Schmidt basis is used. A standardized linear SVM is aggregated separately as a sensitivity analysis. The same accepted fit also supplies observation-location Frobenius diagnostics for reconstructed X variance, Y variance, and X--Y cross-covariance. A native failure is recorded in the aggregate status and returned as a nonzero command status:
-
-```sh
 make run_test TEST_SUITE=brain TEST_NAME=h_stability
-```
-
-In a second terminal, inspect or follow the native progress log:
-
-```sh
-make h_stability_logs
-make h_stability_tail
-```
-
-The helpers follow H=6 by default.
-
-Completed diagnostics are written to `results/brain/aggregate/h_stability/`:
-`separation_by_H.csv`, `explained_structure_by_H.csv`,
-`intrinsic_fpls_slider_stability_by_H.csv`, `intrinsic_fpls_vs_svm_H3.csv`,
-and the primary slider maps under `intrinsic_fpls_slider_maps/`. The older
-maximum-margin files remain available as sensitivity artifacts. Explained-structure and slider figures are
-written under `images/brain/aggregate/h_stability/`.
-
-The `paraview/` subdirectory contains one tetrahedral VTU with raw and comparison-normalized
-`beta`, `gamma`, and `f` fields for `H = 3:6`. Its Python scene arranges the fields as three
-rows by four component-prefix columns, uses linked cameras, and writes a reusable `.pvsm`
-state when run:
-
-```sh
-paraview --script=results/brain/aggregate/h_stability/paraview/maximum_margin_comparison.py
-```
-
-The scene uses response-oriented, FEM-mass-normalized fields for shape comparison; the same
-VTU retains the unnormalized coefficient arrays.
-
-## Repeated Training-Sample Slider Stability
-
-The reviewer-facing resampling study creates 50 training subsets: five stratified delete-one-fold
-splits by ten repeats, with one progressive H=6 R1-fPLS fit per subset. Class labels are used to
-construct the stratified fold assignment. The omitted 20% is excluded from the native fit, GCV,
-centering, response recoding, score scaling, and slider construction. Slider stability remains a
-descriptive sampling analysis because its complete-data reference overlaps each training subset.
-
-Every fit re-estimates the functional mean, response coding, GCV penalties, and intrinsic H=3
-slider using its training subjects only. Aggregation reports the
-distribution of the first perfectly separating training prefix and compares each available
-training `f_3^PLS` with the complete-data `f_3^PLS` through FEM mass `rho_H3` and relative error `e_H3`.
-The overlapping training subsets are descriptive resamples, not independent replicates.
-
-After fitting, the same saved models are also used for a separate held-out structural evaluation.
-Each omitted fold is projected with its training-only mean and reducer, producing one curve per fold
-for H=1:6 of reconstructed X variance, Y variance, and X--Y cross-covariance. These diagnostics use
-the observation-location Frobenius definitions from the simulation study, without a FEM mass matrix
-or test-set tuning. Post-processing reads the complete-data `prepared_data.rds` and exported mesh
-from the accepted reference fit, so it does not depend on a separate copy of the private source inputs.
-The individual fold curves, descriptive summaries, and figure are written as
-`slider_resampling_test_explained_structure_*` in the corresponding aggregate result/image folders.
-
-Run the reduced two-fold, H=3 plumbing check locally:
-
-```sh
-SMOKE_TEST=1 make run_test TEST_SUITE=brain TEST_NAME=slider_resampling
-```
-
-Production outputs are written to `results/brain/aggregate/slider_resampling/`. They include
-fold diagnostics, the H-minimum distribution, every training-versus-complete slider comparison,
-descriptive summaries, regularization/convergence provenance, and resource measurements.
-
-The fPCR comparator uses two separate targets so it cannot overwrite or trigger refits of the
-accepted R1-fPLS analysis. First fit and aggregate one complete-data H=6 fPCR reference, then run
-the same 10-by-5 training subsets:
-
-```sh
-make run_test TEST_SUITE=brain TEST_NAME=fpcr_h_stability
-make run_test TEST_SUITE=brain TEST_NAME=fpcr_slider_resampling
-```
-
-The fPCR slider uses the same fixed-`C = 1e6` definition and FEM-mass `rho_H3`/`e_H3` metrics.
-Hard-margin status is recorded rather than assumed: if H=3 is not linearly separable for fPCR, the
-fixed-cost soft-margin slider remains comparable but is explicitly labelled as such.
-
-An isolated exploratory complete-data target checks whether fPCR separates only after retaining many
-more components. It fits H=20, keeps the functional-mean grid at `10^(-15:2)`, extends only the fPCA
-grid to `10^(-15:6)`, and saves every candidate-wise fPCA GCV curve. It reports both threshold
-separation of the prefix OLS response and hard-margin separation in score space for H=1:20. It does
-not overwrite or trigger the accepted H=6 fPCR reference or its resampling results:
-
-```sh
+make run_test TEST_SUITE=brain TEST_NAME=slider_resampling
 make run_test TEST_SUITE=brain TEST_NAME=fpcr_h20_separation
 ```
 
-## Torque Cluster
+The local profile uses independent parallel workers while each native fit remains single-threaded. `SMOKE_TEST=1` reduces slider resampling to two folds and three components.
 
-The `hpc-torque` profile is the Kami runtime and is aligned with canonical testbench runtime commit
-`89ba803b85c76b40aab8af2037b779fd29677924`. It submits compilation, distributes option
-files across PBS workers, exports the configured environment, and schedules aggregation
-with an `afterok` dependency. Each fPLS fit is single-threaded; independent training folds run
-in parallel. The managed cluster clone is pinned to outer commit
-`ecbf23ef37571174c438ab68c3d21d7ecd5cf18f` and core commit
-`1b75249a7b49ccee72cb94207a9dc5daaa21848c` on their mapped fPLS branches.
+## PBS execution
+
+The `hpc-torque` profile compiles and runs through PBS. It distributes option files across workers and submits aggregation after successful fits.
 
 ```sh
 PATH_APPLICATION_DATA=/cluster/path/to/brain-data make build PROFILE=hpc-torque
 make run_test TEST_SUITE=brain TEST_NAME=h_stability
-# After h_stability aggregation completes successfully:
 make run_test TEST_SUITE=brain TEST_NAME=slider_resampling
-# Optional fPCR comparator, run in this order:
-make run_test TEST_SUITE=brain TEST_NAME=fpcr_h_stability
-make run_test TEST_SUITE=brain TEST_NAME=fpcr_slider_resampling
-# Optional exploratory high-component fPCR separation diagnostic:
 make run_test TEST_SUITE=brain TEST_NAME=fpcr_h20_separation
 ```
 
-Production fits require a clean committed application worktree. Preview the compile, queue partitioning, PBS resources, and dependent aggregation jobs without submission:
+Inspect job commands without sending them to PBS:
 
 ```sh
-PBS_COMPILE_DRY_RUN=1 PBS_DRY_RUN=1 make run_test TEST_SUITE=brain TEST_NAME=h_stability
-PBS_COMPILE_DRY_RUN=1 PBS_DRY_RUN=1 make run_test TEST_SUITE=brain TEST_NAME=slider_resampling
-PBS_COMPILE_DRY_RUN=1 PBS_DRY_RUN=1 make run_test TEST_SUITE=brain TEST_NAME=fpcr_h_stability
-PBS_COMPILE_DRY_RUN=1 PBS_DRY_RUN=1 make run_test TEST_SUITE=brain TEST_NAME=fpcr_slider_resampling
-PBS_COMPILE_DRY_RUN=1 PBS_DRY_RUN=1 make run_test TEST_SUITE=brain TEST_NAME=fpcr_h20_separation
+PBS_COMPILE_DRY_RUN=1 PBS_DRY_RUN=1 \
+make run_test TEST_SUITE=brain TEST_NAME=slider_resampling
 ```
 
-The application defaults to at most 15 workers, one CPU and 16 GB per worker, with a
-12-hour wall-time request. `PBS_MAX_JOBS=50` requests one worker per training split when the scheduler
-policy permits it. `PBS_QUEUE`, `PBS_ACCOUNT`, `PBS_MEM`, and `PBS_TIME` are available as
-run-time overrides. Preview submissions with `PBS_DRY_RUN=1`.
+Resource requests can be adjusted with `PBS_MAX_JOBS`, `PBS_QUEUE`, `PBS_ACCOUNT`, `PBS_CPUS`, `PBS_MEM`, and `PBS_TIME`.
 
-See [docs/provenance.md](docs/provenance.md) for source, template, native-stack, and data-provenance details.
+## Outputs and figures
+
+Aggregates are written below `results/brain/aggregate/<target>/`; figures are written below `images/brain/aggregate/<target>/`.
+
+The complete-data R1-fPLS aggregate includes:
+
+- `separation_by_H.csv`
+- `intrinsic_fpls_slider_stability_by_H.csv`
+- `intrinsic_fpls_slider_coordinates_by_H.csv`
+- `intrinsic_fpls_scores_H3.csv`
+- `intrinsic_fpls_slider_maps/reconstruction_loading_h3.csv` through `h6.csv`
+- `beta_stability_by_H.csv`
+- regularization, resource, run-status, telemetry, and provenance records
+
+The resampling aggregate includes fold diagnostics, the first-perfect-prefix distribution, all 50 intrinsic-slider comparisons with the complete-data `H = 3` map, descriptive summaries, regularization diagnostics, and resources.
+
+Generate the two application figure panels from accepted result files:
+
+```sh
+make application_figure_panels
+```
+
+See [tests/README.md](tests/README.md), [paper-figures/README.md](paper-figures/README.md), and [docs/provenance.md](docs/provenance.md) for suite, figure-source, and provenance details.
