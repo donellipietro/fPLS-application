@@ -24,8 +24,9 @@ Historical simulation suites are intentionally not migrated here.
 ## Native Stack
 
 - fdaPDE-cpp branch: `develop_fPLS`
-- Expected outer commit: `e0ce2dbd26a61e0858e2527d901c2b764dfa376f`
-- Expected core gitlink: `1b75249a7b49ccee72cb94207a9dc5daaa21848c`
+- Expected outer commit: `fbf764fafe81d21d3a25f89c5f53f65c7cee8514`
+- Core branch: `codex/fpls-stable-parser` (stable plus the table-reader path fix)
+- Expected core gitlink: `472f9bd374a63fbf851106e5c45f8870e31e8189`
 - Application runtime checkout: `libraries/fdaPDE-cpp` (ignored and managed locally)
 - Local bootstrap source: `/Users/pietrodonelli/Documents/University/projects/fPLS/fPLS-simulation-study/libraries/fdaPDE-cpp`
 - The `hpc-torque` managed clone verifies and checks out the expected outer/core commits rather than following a later branch tip.
