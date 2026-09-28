@@ -58,7 +58,7 @@ f_H = R_H D_H q_H.
 
 The implementation stores the score center, score scale, unit standardized normal, response norm, subject coordinate, and functional loading. The exact response threshold maximizes sensitivity plus specificity over observed oriented fitted values. Its `H = 3` standardized coordinate is saved in `intrinsic_fpls_scores_H3.csv`.
 
-Spatial comparisons use the tetrahedral P1 finite-element mass inner product. `H = 4:6` intrinsic loadings and native beta coefficients are compared against their `H = 3` references without post-hoc sign alignment.
+Spatial comparisons use the tetrahedral P1 finite-element mass inner product. `H = 1:6` intrinsic loadings (including the reference itself) and `H = 4:6` native beta coefficients are compared against their `H = 3` references without post-hoc sign alignment. All prefixes are reconstructed from the saved complete-data `H = 6` fit; adding `H = 1:2` requires no refit.
 
 ## Sampling stability
 

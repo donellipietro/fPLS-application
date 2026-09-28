@@ -14,7 +14,7 @@ The predictor is centered by a GCV-smoothed overall functional mean in the tetra
 The suite contains four targets:
 
 - `smoke_overall_mean`: validates input loading, response coding, and functional-mean preparation without a native model fit.
-- `h_stability`: fits one complete-data R1-fPLS model through `H = 6`, reports prefix separation, verifies the first perfectly separating prefix, and compares the intrinsic slider at `H = 4:6` with `H = 3` using tetrahedral FEM mass metrics. Native `Beta(H)` is compared over the same prefixes.
+- `h_stability`: fits one complete-data R1-fPLS model through `H = 6`, reports prefix separation, verifies the first perfectly separating prefix, and compares the intrinsic slider at `H = 1:6` with `H = 3` using tetrahedral FEM mass metrics (including the reference itself). Native `Beta(H)` is compared at `H = 4:6` with `H = 3`.
 - `slider_resampling`: runs 10 repeats of stratified five-fold delete-one-fold sampling, for 50 training-only R1-fPLS fits. Each fit re-estimates centering, response coding, regularization, and the intrinsic `H = 3` slider. Omitted subjects define the perturbation and are not used for fitted quantities or metrics.
 - `fpcr_h20_separation`: fits the complete-data fPCR comparator through `H = 20` and reports prefix separation with its fPCA GCV diagnostics.
 
@@ -108,6 +108,14 @@ The complete-data R1-fPLS aggregate includes:
 - regularization, resource, run-status, telemetry, and provenance records
 
 The resampling aggregate includes fold diagnostics, the first-perfect-prefix distribution, all 50 intrinsic-slider comparisons with the complete-data `H = 3` map, descriptive summaries, regularization diagnostics, and resources.
+
+To extend the 50 saved production resampling fits to `H = 1:6` without refitting:
+
+```sh
+Rscript tests/brain/postprocess_slider_resampling_by_H.R /path/to/results results/brain/aggregate/slider_resampling_by_H
+```
+
+This writes per-fold FEM comparisons, descriptive summaries, and plots against both the same fold's `H = 3` slider and the complete-data `H = 3` slider. It checks the recomputed `H = 3` results against the archived comparisons. These are training-fit stability metrics, not held-out predictive performance; the 50 overlapping fits are not independent replicates.
 
 Generate the two application figure panels from the recorded complete-data result files:
 

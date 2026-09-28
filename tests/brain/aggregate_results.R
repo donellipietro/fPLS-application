@@ -253,11 +253,11 @@ if (identical(requested, "h_stability")) {
   prepared_data <- readRDS(file.path(batch_dir, "prepared_data.rds"))
   volumes <- tetrahedral_volumes(points, elements)
 
-  sliders <- setNames(lapply(3:6, function(h) {
+  sliders <- setNames(lapply(1:6, function(h) {
     standardized_intrinsic_fpls_slider(scores, x_loadings, y_loadings, h)
-  }), as.character(3:6))
+  }), as.character(1:6))
   reference <- matrix(sliders[["3"]]$loading, ncol = 1L)
-  intrinsic_stability <- do.call(rbind, lapply(4:6, function(h) cbind(
+  intrinsic_stability <- do.call(rbind, lapply(1:6, function(h) cbind(
     reference_components = 3L,
     retained_components = h,
     mass_stability(reference, matrix(sliders[[as.character(h)]]$loading, ncol = 1L), elements, volumes)
@@ -270,7 +270,7 @@ if (identical(requested, "h_stability")) {
   )], file.path(aggregate_dir, "intrinsic_fpls_slider_stability_by_H.csv"), row.names = FALSE)
 
   pad <- function(values) c(values, rep(NA_real_, 6L - length(values)))
-  coordinates <- do.call(rbind, lapply(3:6, function(h) {
+  coordinates <- do.call(rbind, lapply(1:6, function(h) {
     slider <- sliders[[as.character(h)]]
     as.data.frame(as.list(c(
       retained_components = h,
@@ -283,7 +283,7 @@ if (identical(requested, "h_stability")) {
   write.csv(coordinates, file.path(aggregate_dir, "intrinsic_fpls_slider_coordinates_by_H.csv"), row.names = FALSE)
   map_dir <- file.path(aggregate_dir, "intrinsic_fpls_slider_maps")
   dir.create(map_dir, recursive = TRUE, showWarnings = FALSE)
-  for (h in 3:6) write.csv(
+  for (h in 1:6) write.csv(
     data.frame(coefficient = sliders[[as.character(h)]]$loading),
     file.path(map_dir, glue::glue("reconstruction_loading_h{h}.csv")),
     row.names = FALSE
@@ -321,7 +321,7 @@ if (identical(requested, "h_stability")) {
   )
   stability_plot <- ggplot(plot_values, aes(retained_components, value, colour = metric)) +
     geom_line(linewidth = 0.7) + geom_point(size = 2) +
-    facet_wrap(~ metric, scales = "free_y") + scale_x_continuous(breaks = 4:6) +
+    facet_wrap(~ metric, scales = "free_y") + scale_x_continuous(breaks = 1:6) +
     labs(x = "Retained components H", y = "Comparison with H=3 intrinsic slider") +
     theme_bw() + theme(legend.position = "none")
   ggsave(
@@ -331,7 +331,7 @@ if (identical(requested, "h_stability")) {
 
   boundary_status <- list(
     reference = "H3_standardized_intrinsic_fPLS_slider_loading",
-    comparisons = "H4_to_H6_standardized_intrinsic_fPLS_slider_loadings",
+    comparisons = "H1_to_H6_standardized_intrinsic_fPLS_slider_loadings",
     definition = "R_H_times_D_H_times_unit_D_H_nu_H",
     metrics = c("tetrahedral_P1_FEM_mass_correlation_rho_H", "relative_FEM_mass_error_e_H"),
     aggregate = "intrinsic_fpls_slider_stability_by_H.csv"
