@@ -39,10 +39,10 @@ application_profile <- function(
     FDAPDE_CORE_REPOSITORY = fdapde_core_repository,
     FDAPDE_CPP_BRANCH = Sys.getenv("FDAPDE_CPP_BRANCH", unset = "develop_fPLS"),
     FDAPDE_CPP_COMMIT = Sys.getenv(
-      "FDAPDE_CPP_COMMIT", unset = "92ab954f813f84901894a5c7a95a67235072264c"
+      "FDAPDE_CPP_COMMIT", unset = "fbf764fafe81d21d3a25f89c5f53f65c7cee8514"
     ),
     FDAPDE_CORE_COMMIT = Sys.getenv(
-      "FDAPDE_CORE_COMMIT", unset = "1b75249a7b49ccee72cb94207a9dc5daaa21848c"
+      "FDAPDE_CORE_COMMIT", unset = "472f9bd374a63fbf851106e5c45f8870e31e8189"
     ),
     FDAPDE_CPP_MANAGED = Sys.getenv("FDAPDE_CPP_MANAGED", unset = "true"),
     TEST_EXECUTION_STRATEGY = execution_strategy,

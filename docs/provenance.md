@@ -16,8 +16,9 @@ The active centering method is the GCV-smoothed overall functional mean.
 The expected native dependencies are:
 
 - fdaPDE-cpp branch: `develop_fPLS`
-- fdaPDE-cpp revision: `92ab954f813f84901894a5c7a95a67235072264c`
-- fdaPDE core revision: `1b75249a7b49ccee72cb94207a9dc5daaa21848c`
+- fdaPDE-cpp revision: `fbf764fafe81d21d3a25f89c5f53f65c7cee8514`
+- fdaPDE core branch: `codex/fpls-stable-parser` (stable plus the table-reader path fix)
+- fdaPDE core revision: `472f9bd374a63fbf851106e5c45f8870e31e8189`
 
 The managed checkout lives in the ignored `libraries/fdaPDE-cpp` directory. Setting `FDAPDE_CPP_MANAGED=false` uses `PATH_FDAPDE_CPP` without changing that checkout.
 

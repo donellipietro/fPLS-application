@@ -56,7 +56,7 @@ case "${outer_branch}" in
     core_branch="develop-RGCCA"
     ;;
   develop_fPLS)
-    core_branch="develop-fPLS"
+    core_branch="codex/fpls-stable-parser"
     ;;
   *)
     echo "Error: no core branch mapping for outer branch ${outer_branch}" >&2
