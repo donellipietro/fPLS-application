@@ -24,7 +24,7 @@ Historical simulation suites are intentionally not migrated here.
 ## Native Stack
 
 - fdaPDE-cpp branch: `develop_fPLS`
-- Expected outer commit: `ecbf23ef37571174c438ab68c3d21d7ecd5cf18f`
+- Expected outer commit: `e0ce2dbd26a61e0858e2527d901c2b764dfa376f`
 - Expected core gitlink: `1b75249a7b49ccee72cb94207a9dc5daaa21848c`
 - Application runtime checkout: `libraries/fdaPDE-cpp` (ignored and managed locally)
 - Local bootstrap source: `/Users/pietrodonelli/Documents/University/projects/fPLS/fPLS-simulation-study/libraries/fdaPDE-cpp`

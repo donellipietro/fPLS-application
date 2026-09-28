@@ -144,7 +144,7 @@ The `hpc-torque` profile is the Kami runtime and is aligned with canonical testb
 files across PBS workers, exports the configured environment, and schedules aggregation
 with an `afterok` dependency. Each fPLS fit is single-threaded; independent training folds run
 in parallel. The managed cluster clone is pinned to outer commit
-`ecbf23ef37571174c438ab68c3d21d7ecd5cf18f` and core commit
+`e0ce2dbd26a61e0858e2527d901c2b764dfa376f` and core commit
 `1b75249a7b49ccee72cb94207a9dc5daaa21848c` on their mapped fPLS branches.
 
 ```sh

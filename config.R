@@ -58,7 +58,7 @@ TESTBENCH_CONFIG_PROFILES <- list(
 	      FDAPDE_CPP_BRANCH = Sys.getenv("FDAPDE_CPP_BRANCH", unset = "develop_fPLS"),
       FDAPDE_CPP_COMMIT = Sys.getenv(
         "FDAPDE_CPP_COMMIT",
-        unset = "ecbf23ef37571174c438ab68c3d21d7ecd5cf18f"
+        unset = "e0ce2dbd26a61e0858e2527d901c2b764dfa376f"
       ),
       FDAPDE_CORE_COMMIT = Sys.getenv(
         "FDAPDE_CORE_COMMIT",
@@ -128,7 +128,7 @@ TESTBENCH_CONFIG_PROFILES <- list(
 	      FDAPDE_CPP_BRANCH = Sys.getenv("FDAPDE_CPP_BRANCH", unset = "develop_fPLS"),
       FDAPDE_CPP_COMMIT = Sys.getenv(
         "FDAPDE_CPP_COMMIT",
-        unset = "ecbf23ef37571174c438ab68c3d21d7ecd5cf18f"
+        unset = "e0ce2dbd26a61e0858e2527d901c2b764dfa376f"
       ),
       FDAPDE_CORE_COMMIT = Sys.getenv(
         "FDAPDE_CORE_COMMIT",
@@ -215,7 +215,7 @@ TESTBENCH_CONFIG_PROFILES <- list(
 	      FDAPDE_CPP_BRANCH = Sys.getenv("FDAPDE_CPP_BRANCH", unset = "develop_fPLS"),
       FDAPDE_CPP_COMMIT = Sys.getenv(
         "FDAPDE_CPP_COMMIT",
-        unset = "ecbf23ef37571174c438ab68c3d21d7ecd5cf18f"
+        unset = "e0ce2dbd26a61e0858e2527d901c2b764dfa376f"
       ),
       FDAPDE_CORE_COMMIT = Sys.getenv(
         "FDAPDE_CORE_COMMIT",
@@ -292,7 +292,7 @@ TESTBENCH_CONFIG_PROFILES <- list(
       FDAPDE_CPP_BRANCH = Sys.getenv("FDAPDE_CPP_BRANCH", unset = "develop_fPLS"),
       FDAPDE_CPP_COMMIT = Sys.getenv(
         "FDAPDE_CPP_COMMIT",
-        unset = "ecbf23ef37571174c438ab68c3d21d7ecd5cf18f"
+        unset = "e0ce2dbd26a61e0858e2527d901c2b764dfa376f"
       ),
       FDAPDE_CORE_COMMIT = Sys.getenv(
         "FDAPDE_CORE_COMMIT",
