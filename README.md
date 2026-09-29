@@ -38,82 +38,67 @@ The preprocessed inputs are private and are not distributed with this repository
 | `X_imputed.rds` | `bf40b1320a4b0b115117d922ac2d08c3` |
 | `Ycl.rds` | `e99aba962f10e0384d1897365a028bca` |
 
-The default path is `data/brain` relative to the repository. Override it with `PATH_APPLICATION_DATA=/path/to/brain-data` when the inputs live elsewhere.
+The default path is `data/brain` relative to the repository. If the inputs live elsewhere,
+prefix the build command below with `PATH_APPLICATION_DATA=/path/to/brain-data`.
 
 Generated data, results, images, logs, queues, build products, libraries, and provenance artifacts are ignored by Git.
 
 ## Prerequisites
 
-The analysis runtime requires R, GNU Make, Bash, Git, a C++20 compiler, and Eigen. Local parallel execution additionally requires GNU Parallel; the `hpc-torque` profile requires a PBS client providing `qsub`. Dependencies used only to generate manuscript panels are listed separately in [paper-figures/README.md](paper-figures/README.md).
+Install the following on your machine before running the workflow:
 
-## Local setup and execution
+- GNU Make, Bash, Git and R;
+- a C++20 compiler and Eigen;
+- GNU Parallel and `bc` for parallel execution.
 
-Create the environment, directories, R dependencies, JSON headers, and pinned fdaPDE checkout:
+`make build` automatically installs the missing R packages listed in the
+[installation script](src/installation/install_femR.R), and downloads the nlohmann/json
+headers and `fdaPDE-cpp` with its `fdaPDE/core` dependency. The native revisions are pinned in
+[`config.R`](config.R): fdaPDE-cpp commit `fbf764f` and core commit `472f9bd`.
+
+Additional software needed to generate manuscript panels is listed in the
+[figure guide](paper-figures/README.md#prerequisites).
+
+## Setup and execution
+
+From the repository root, prepare the local macOS runtime with the `macbook` profile.
+The build saves the selected profile in `.env`, and subsequent commands reuse it:
 
 ```sh
 make build PROFILE=macbook
 ```
 
-An existing fdaPDE checkout matching the revisions pinned in `config.R` can be used:
+This profile uses Homebrew GCC 15 and Eigen paths. Override `CC`, `CXX`, or
+`PATH_EIGEN_INCLUDE` when running the build if your installation uses different paths.
+
+Then run an analysis; `make run_test` automatically compiles the required native executables:
 
 ```sh
-PATH_FDAPDE_CPP=/path/to/fdaPDE-cpp \
-FDAPDE_CPP_MANAGED=false \
-make build PROFILE=macbook
-```
-
-Compile and run targets with:
-
-```sh
-make compile MODEL=brain TARGET=fit_model
 make run_test TEST_SUITE=brain TEST_NAME=h_stability
-make run_test TEST_SUITE=brain TEST_NAME=slider_resampling
-make run_test TEST_SUITE=brain TEST_NAME=fpcr_h20_separation
 ```
 
+See the [analysis guide](tests/README.md) for the resampling and fPCR commands. Run
+`h_stability` before `slider_resampling`, which uses its complete-data slider as the reference.
 The local profile uses independent parallel workers while each native fit remains single-threaded.
 
-## PBS execution
+## Results
 
-The `hpc-torque` profile compiles and runs through PBS. It distributes option files across workers and submits aggregation after successful fits.
+After `make run_test`, aggregated results are available in `results/brain/aggregate/<target>/`
+and figures in `images/brain/aggregate/<target>/`, relative to the repository root. For example,
+`TEST_NAME=h_stability` writes results to `results/brain/aggregate/h_stability/` and figures to
+`images/brain/aggregate/h_stability/`.
 
-```sh
-PATH_APPLICATION_DATA=/cluster/path/to/brain-data make build PROFILE=hpc-torque
-make run_test TEST_SUITE=brain TEST_NAME=h_stability
-make run_test TEST_SUITE=brain TEST_NAME=slider_resampling
-make run_test TEST_SUITE=brain TEST_NAME=fpcr_h20_separation
-```
-
-Resource requests can be adjusted with `PBS_MAX_JOBS`, `PBS_QUEUE`, `PBS_ACCOUNT`, `PBS_CPUS`, `PBS_MEM`, and `PBS_TIME`.
-
-## Outputs and figures
-
-Aggregates are written below `results/brain/aggregate/<target>/`; figures are written below `images/brain/aggregate/<target>/`.
-
-The complete-data R1-fPLS outputs used by the article and Supplementary Material include:
-
-- `separation_by_H.csv`
-- `intrinsic_fpls_slider_stability_by_H.csv`
-- `intrinsic_fpls_slider_coordinates_by_H.csv`
-- `intrinsic_fpls_scores_H3.csv`
-- `intrinsic_fpls_slider_maps/reconstruction_loading_h1.csv` through `reconstruction_loading_h6.csv`
-- regularization, resource, run-status, telemetry, and provenance records
-
-The resampling aggregate includes fold diagnostics, the first-perfect-prefix distribution, all 50 intrinsic-slider comparisons with the complete-data `H = 3` map, descriptive summaries, regularization diagnostics, and resources.
-
-To reproduce the supplementary slider-similarity table from the 50 saved six-component resampling fits:
-
-```sh
-Rscript tests/brain/postprocess_slider_resampling_by_H.R /path/to/results results/brain/aggregate/slider_resampling_by_H
-```
-
-This writes per-fold FEM comparisons and `summary_by_H.csv` against both the same fold's `H = 3` slider and the complete-data `H = 3` slider. The medians and quartiles of `rho_H` provide the supplementary table values. These are training-fit stability metrics, not held-out predictive performance; the 50 overlapping fits are not independent replicates.
-
-Generate the two application figure panels from the recorded complete-data result files:
+Once the complete `h_stability` results and associated raw files are available, generate the
+manuscript panels from the repository root:
 
 ```sh
 make application_figure_panels
 ```
+
+See the [figure guide](paper-figures/README.md) for output locations and further options.
+The [analysis guide](tests/README.md) also explains how to generate the supplementary
+slider-similarity table from the 50 saved resampling fits. These are training-fit stability
+summaries; the overlapping fits are not independent replicates.
 
 ## Reproducibility limits
 
