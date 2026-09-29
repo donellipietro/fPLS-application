@@ -1,6 +1,8 @@
 # fPLS Neuroimaging Application
 
-This repository contains the native fdaPDE implementation of the fPLS task-based functional-connectivity application. It compares control (`CTRL`) and schizophrenia (`SCHZ`) groups on a volumetric tetrahedral mesh.
+This repository contains the application code supporting the article and Supplementary Material for “Rank-One Functional Partial Least Squares Regression”.
+
+The neuroimaging application uses the native fdaPDE implementation of R1-fPLS to compare control (`CTRL`) and schizophrenia (`SCHZ`) groups on a volumetric tetrahedral mesh.
 
 The workflows correspond to the neuroimaging application section of the R1-fPLS article; the standardized score coordinate and functional-slider construction are derived in the supplementary section “Intrinsic R1-fPLS slider.”
 
@@ -11,10 +13,9 @@ The predictor is centered by a GCV-smoothed overall functional mean in the tetra
 
 ## Analysis targets
 
-The suite contains four targets:
+The article and Supplementary Material use three analysis targets:
 
-- `smoke_overall_mean`: validates input loading, response coding, and functional-mean preparation without a native model fit.
-- `h_stability`: fits one complete-data R1-fPLS model through `H = 6`, reports prefix separation, verifies the first perfectly separating prefix, and compares the intrinsic slider at `H = 1:6` with `H = 3` using tetrahedral FEM mass metrics (including the reference itself). Native `Beta(H)` is compared at `H = 4:6` with `H = 3`.
+- `h_stability`: fits one complete-data R1-fPLS model through `H = 6`, reports separation at each component prefix and the first perfectly separating prefix, and compares the intrinsic slider at `H = 1:6` with `H = 3` using the tetrahedral FEM mass inner product.
 - `slider_resampling`: runs 10 repeats of stratified five-fold delete-one-fold sampling, for 50 training-only R1-fPLS fits. Each fit re-estimates centering, response coding, regularization, and the intrinsic `H = 3` slider. Omitted subjects define the perturbation and are not used for fitted quantities or metrics.
 - `fpcr_h20_separation`: fits the complete-data fPCR comparator through `H = 20` and reports prefix separation with its fPCA GCV diagnostics.
 
@@ -43,7 +44,7 @@ Generated data, results, images, logs, queues, build products, libraries, and pr
 
 ## Prerequisites
 
-The analysis runtime requires R, GNU Make, a C++ compiler, and Eigen. Local parallel execution additionally requires GNU Parallel; the `hpc-torque` profile requires a PBS client providing `qsub`. Dependencies used only to generate manuscript panels are listed separately in [paper-figures/README.md](paper-figures/README.md).
+The analysis runtime requires R, GNU Make, Bash, Git, a C++20 compiler, and Eigen. Local parallel execution additionally requires GNU Parallel; the `hpc-torque` profile requires a PBS client providing `qsub`. Dependencies used only to generate manuscript panels are listed separately in [paper-figures/README.md](paper-figures/README.md).
 
 ## Local setup and execution
 
@@ -53,7 +54,7 @@ Create the environment, directories, R dependencies, JSON headers, and pinned fd
 make build PROFILE=macbook
 ```
 
-An existing fdaPDE checkout can be used without modification:
+An existing fdaPDE checkout matching the revisions pinned in `config.R` can be used:
 
 ```sh
 PATH_FDAPDE_CPP=/path/to/fdaPDE-cpp \
@@ -65,13 +66,12 @@ Compile and run targets with:
 
 ```sh
 make compile MODEL=brain TARGET=fit_model
-SMOKE_TEST=1 make run_test TEST_SUITE=brain TEST_NAME=smoke_overall_mean
 make run_test TEST_SUITE=brain TEST_NAME=h_stability
 make run_test TEST_SUITE=brain TEST_NAME=slider_resampling
 make run_test TEST_SUITE=brain TEST_NAME=fpcr_h20_separation
 ```
 
-The local profile uses independent parallel workers while each native fit remains single-threaded. `SMOKE_TEST=1` reduces slider resampling to two folds and three components.
+The local profile uses independent parallel workers while each native fit remains single-threaded.
 
 ## PBS execution
 
@@ -84,38 +84,30 @@ make run_test TEST_SUITE=brain TEST_NAME=slider_resampling
 make run_test TEST_SUITE=brain TEST_NAME=fpcr_h20_separation
 ```
 
-Inspect job commands without sending them to PBS:
-
-```sh
-PBS_COMPILE_DRY_RUN=1 PBS_DRY_RUN=1 \
-make run_test TEST_SUITE=brain TEST_NAME=slider_resampling
-```
-
 Resource requests can be adjusted with `PBS_MAX_JOBS`, `PBS_QUEUE`, `PBS_ACCOUNT`, `PBS_CPUS`, `PBS_MEM`, and `PBS_TIME`.
 
 ## Outputs and figures
 
 Aggregates are written below `results/brain/aggregate/<target>/`; figures are written below `images/brain/aggregate/<target>/`.
 
-The complete-data R1-fPLS aggregate includes:
+The complete-data R1-fPLS outputs used by the article and Supplementary Material include:
 
 - `separation_by_H.csv`
 - `intrinsic_fpls_slider_stability_by_H.csv`
 - `intrinsic_fpls_slider_coordinates_by_H.csv`
 - `intrinsic_fpls_scores_H3.csv`
-- `intrinsic_fpls_slider_maps/reconstruction_loading_h3.csv` through `h6.csv`
-- `beta_stability_by_H.csv`
+- `intrinsic_fpls_slider_maps/reconstruction_loading_h1.csv` through `reconstruction_loading_h6.csv`
 - regularization, resource, run-status, telemetry, and provenance records
 
 The resampling aggregate includes fold diagnostics, the first-perfect-prefix distribution, all 50 intrinsic-slider comparisons with the complete-data `H = 3` map, descriptive summaries, regularization diagnostics, and resources.
 
-To extend the 50 saved production resampling fits to `H = 1:6` without refitting:
+To reproduce the supplementary slider-similarity table from the 50 saved six-component resampling fits:
 
 ```sh
 Rscript tests/brain/postprocess_slider_resampling_by_H.R /path/to/results results/brain/aggregate/slider_resampling_by_H
 ```
 
-This writes per-fold FEM comparisons, descriptive summaries, and plots against both the same fold's `H = 3` slider and the complete-data `H = 3` slider. It checks the recomputed `H = 3` results against the archived comparisons. These are training-fit stability metrics, not held-out predictive performance; the 50 overlapping fits are not independent replicates.
+This writes per-fold FEM comparisons and `summary_by_H.csv` against both the same fold's `H = 3` slider and the complete-data `H = 3` slider. The medians and quartiles of `rho_H` provide the supplementary table values. These are training-fit stability metrics, not held-out predictive performance; the 50 overlapping fits are not independent replicates.
 
 Generate the two application figure panels from the recorded complete-data result files:
 

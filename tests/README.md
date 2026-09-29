@@ -1,54 +1,36 @@
-# Brain application suite
+# Neuroimaging analyses
 
-The `brain` suite is controlled by `tests/brain/config.R` and exposes exactly four targets:
+The analyses in `brain/` support the article's functional-connectivity application and the
+Supplementary Material's intrinsic-slider derivation and stability table.
 
-```text
-smoke_overall_mean
-h_stability
-slider_resampling
-fpcr_h20_separation
-```
+| Target | Article or Supplementary Material output |
+| --- | --- |
+| `h_stability` | Complete-data R1-fPLS fit, separation across `H = 1:6`, intrinsic-slider figures, and slider similarity relative to `H = 3` |
+| `slider_resampling` | 50 training fits from ten repeated stratified five-fold splits, first separating prefix, and slider stability |
+| `fpcr_h20_separation` | Exploratory fPCR comparison through `H = 20` |
 
-`src/init.R` generates JSON options in `tmp/queue/brain/<target>/`. A runner invokes `tests/brain/main.R` once per option and then calls `tests/brain/aggregate_results.R`.
-
-The principal files are:
-
-```text
-tests/brain/
-├── config.R
-├── main.R
-├── aggregate_results.R
-├── test_fpcr_h20_options.R
-├── test_slider_resampling.R
-└── utils/
-    ├── data_prep.R
-    ├── fit_and_evaluate.R
-    ├── generate_options.R
-    ├── intrinsic_slider.R
-    ├── loading_stability.R
-    ├── models_evaluation.R
-    ├── paraview_export.R
-    ├── projection.R
-    ├── slider_resampling.R
-    └── wrappers.R
-```
-
-Use the root Makefile for normal execution:
+After completing the setup in the [root README](../README.md), run from the repository root:
 
 ```sh
 make run_test TEST_SUITE=brain TEST_NAME=h_stability
 make run_test TEST_SUITE=brain TEST_NAME=slider_resampling
+make run_test TEST_SUITE=brain TEST_NAME=fpcr_h20_separation
 ```
 
-The reduced resampling path uses two folds and three components:
+Run `h_stability` before `slider_resampling`: the latter uses the complete-data `H = 3` slider
+as its reference. Each resampling fit re-estimates preprocessing and regularization using
+only its training subjects.
+
+Aggregates are written to `results/brain/aggregate/<target>/`. To reproduce the supplementary
+comparison across all retained component counts from the saved six-component fits:
 
 ```sh
-SMOKE_TEST=1 make run_test TEST_SUITE=brain TEST_NAME=slider_resampling
+Rscript tests/brain/postprocess_slider_resampling_by_H.R /path/to/results results/brain/aggregate/slider_resampling_by_H
 ```
 
-Lightweight unit checks do not read private application data or run native fits:
+The resulting `summary_by_H.csv` contains the median and quartiles of slider similarity
+(`rho_H`) for both references: the complete-data `H = 3` slider and each fold's own `H = 3`
+slider. The 50 overlapping training sets provide descriptive stability summaries.
 
-```sh
-Rscript tests/brain/test_slider_resampling.R
-Rscript tests/brain/test_fpcr_h20_options.R
-```
+See [figure sources](../paper-figures/README.md) for the application panels and
+[provenance](../docs/provenance.md) for preprocessing and native dependency details.
