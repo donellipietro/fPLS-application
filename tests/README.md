@@ -9,7 +9,8 @@ Supplementary Material's intrinsic-slider derivation and stability table.
 | `slider_resampling` | 50 training fits from ten repeated stratified five-fold splits, first separating prefix, and slider stability |
 | `fpcr_h20_separation` | Exploratory fPCR comparison through `H = 20` |
 
-After completing the setup in the [root README](../README.md), run from the repository root:
+After completing the setup in the [root README](../README.md), run from the repository root.
+`make run_test` automatically compiles the analysis and reuses the profile saved in `.env`:
 
 ```sh
 make run_test TEST_SUITE=brain TEST_NAME=h_stability
@@ -21,14 +22,16 @@ Run `h_stability` before `slider_resampling`: the latter uses the complete-data 
 as its reference. Each resampling fit re-estimates preprocessing and regularization using
 only its training subjects.
 
-Aggregates are written to `results/brain/aggregate/<target>/`. To reproduce the supplementary
-comparison across all retained component counts from the saved six-component fits:
+Aggregates are written to `results/brain/aggregate/<target>/` and figures to
+`images/brain/aggregate/<target>/`. To reproduce the supplementary comparison across all
+retained component counts from the saved six-component resampling fits:
 
 ```sh
-Rscript tests/brain/postprocess_slider_resampling_by_H.R /path/to/results results/brain/aggregate/slider_resampling_by_H
+Rscript tests/brain/postprocess_slider_resampling_by_H.R results results/brain/aggregate/slider_resampling_by_H
 ```
 
-The resulting `summary_by_H.csv` contains the median and quartiles of slider similarity
+If results are stored elsewhere, replace the first `results` argument with the directory
+containing `brain/`. The resulting `summary_by_H.csv` contains the median and quartiles of slider similarity
 (`rho_H`) for both references: the complete-data `H = 3` slider and each fold's own `H = 3`
 slider. The 50 overlapping training sets provide descriptive stability summaries.
 
