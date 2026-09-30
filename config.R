@@ -39,7 +39,7 @@ application_profile <- function(
     FDAPDE_CORE_REPOSITORY = fdapde_core_repository,
     FDAPDE_CPP_BRANCH = Sys.getenv("FDAPDE_CPP_BRANCH", unset = "codex/fpls-diagnostics-fpcr"),
     FDAPDE_CPP_COMMIT = Sys.getenv(
-      "FDAPDE_CPP_COMMIT", unset = "9864fa6eb94072ad2b79de989db8a46e4ae81b1e"
+      "FDAPDE_CPP_COMMIT", unset = "d32e45361200b16deb03ebdfad5ee55a703ff73a"
     ),
     FDAPDE_CORE_COMMIT = Sys.getenv(
       "FDAPDE_CORE_COMMIT", unset = "472f9bd374a63fbf851106e5c45f8870e31e8189"
