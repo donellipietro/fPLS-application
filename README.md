@@ -56,19 +56,6 @@ Install the following on your machine before running the workflow:
 headers and the pinned `fdaPDE-cpp` stack. The native revisions are pinned in
 [`config.R`](config.R): fdaPDE-cpp commit `d32e453` and core commit `472f9bd`.
 
-The default source is the published
-[`develop_fPLS` branch of fdaPDE-cpp](https://github.com/fdaPDE/fdaPDE-cpp/tree/develop_fPLS).
-`cpp/compile.sh` prepares `libraries/fdaPDE-cpp` at the pinned outer commit and
-its exact core gitlink. The core is fetched from the submodule URL recorded in
-that commit.
-Set `FDAPDE_CPP_REPOSITORY` to another remote or local clone containing the
-pinned commit, or `FDAPDE_CORE_REPOSITORY` to a matching core clone, before
-regenerating `.env` with `Rscript config.R --profile macbook --write-env`.
-The preparation script refuses a dirty destination, including submodule edits.
-Set `FDAPDE_CPP_MANAGED=false` to validate an existing checkout without changing it.
-Run `python3 tests/check_fdapde_dependency.py` in fPLS-simulation-study to check
-both consumers using temporary local fixture repositories.
-
 Additional software needed to generate manuscript panels is listed in the
 [figure guide](paper-figures/README.md#prerequisites).
 
@@ -84,9 +71,11 @@ make build PROFILE=macbook
 This profile uses Homebrew GCC 15 and Eigen paths. Override `CC`, `CXX`, or
 `PATH_EIGEN_INCLUDE` when running the build if your installation uses different paths.
 
-Then run an analysis; `make run_test` automatically compiles the required native executables:
+`TEST_SUITE=brain` selects the application suite, and `TEST_NAME` selects an analysis
+target. `make run_test` automatically compiles the required native executables:
 
 ```sh
+# Fit the complete-data R1-fPLS model through H = 6
 make run_test TEST_SUITE=brain TEST_NAME=h_stability
 ```
 
@@ -96,8 +85,8 @@ The local profile uses independent parallel workers while each native fit remain
 
 ## Results
 
-After `make run_test`, aggregated results are available in `results/brain/aggregate/<target>/`
-and figures in `images/brain/aggregate/<target>/`, relative to the repository root. For example,
+After `make run_test`, aggregated results are available in `results/brain/aggregate/<TEST_NAME>/`
+and figures in `images/brain/aggregate/<TEST_NAME>/`, relative to the repository root. For example,
 `TEST_NAME=h_stability` writes results to `results/brain/aggregate/h_stability/` and figures to
 `images/brain/aggregate/h_stability/`.
 
