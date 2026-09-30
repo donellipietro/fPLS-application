@@ -37,7 +37,7 @@ application_profile <- function(
     PATH_EIGEN_INCLUDE = Sys.getenv("PATH_EIGEN_INCLUDE", unset = eigen_include),
     FDAPDE_CPP_REPOSITORY = fdapde_repository,
     FDAPDE_CORE_REPOSITORY = fdapde_core_repository,
-    FDAPDE_CPP_BRANCH = Sys.getenv("FDAPDE_CPP_BRANCH", unset = "codex/fpls-diagnostics-fpcr"),
+    FDAPDE_CPP_BRANCH = Sys.getenv("FDAPDE_CPP_BRANCH", unset = "develop_fPLS"),
     FDAPDE_CPP_COMMIT = Sys.getenv(
       "FDAPDE_CPP_COMMIT", unset = "d32e45361200b16deb03ebdfad5ee55a703ff73a"
     ),
@@ -68,7 +68,7 @@ local_repo <- normalizePath(".", mustWork = FALSE)
 local_output <- Sys.getenv("TESTBENCH_OUTPUT", unset = local_repo)
 local_fdapde_repository <- Sys.getenv(
   "FDAPDE_CPP_REPOSITORY",
-  unset = normalizePath("../../../fdaPDE/fdaPDE-cpp", mustWork = FALSE)
+  unset = "https://github.com/fdaPDE/fdaPDE-cpp.git"
 )
 
 TESTBENCH_CONFIG_PROFILES <- list(
@@ -79,7 +79,7 @@ TESTBENCH_CONFIG_PROFILES <- list(
     ),
     fdapde_repository = local_fdapde_repository,
     fdapde_core_repository = Sys.getenv(
-      "FDAPDE_CORE_REPOSITORY", unset = file.path(local_fdapde_repository, "fdaPDE/core")
+      "FDAPDE_CORE_REPOSITORY", unset = ""
     ),
     cc = "/opt/homebrew/bin/gcc-15",
     cxx = "/opt/homebrew/bin/g++-15",
@@ -96,10 +96,10 @@ TESTBENCH_CONFIG_PROFILES <- list(
       output = output,
       fdapde_cpp = fdapde,
       fdapde_repository = Sys.getenv(
-        "FDAPDE_CPP_REPOSITORY", unset = normalizePath("../../../fdaPDE/fdaPDE-cpp", mustWork = FALSE)
+        "FDAPDE_CPP_REPOSITORY", unset = "https://github.com/fdaPDE/fdaPDE-cpp.git"
       ),
       fdapde_core_repository = Sys.getenv(
-        "FDAPDE_CORE_REPOSITORY", unset = file.path(local_fdapde_repository, "fdaPDE/core")
+        "FDAPDE_CORE_REPOSITORY", unset = ""
       ),
       cc = "gcc",
       cxx = "g++",

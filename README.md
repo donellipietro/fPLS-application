@@ -53,19 +53,19 @@ Install the following on your machine before running the workflow:
 
 `make build` automatically installs the missing R packages listed in the
 [installation script](src/installation/install_femR.R), and prepares the nlohmann/json
-headers and the pinned local `fdaPDE-cpp` stack. The native revisions are pinned in
+headers and the pinned `fdaPDE-cpp` stack. The native revisions are pinned in
 [`config.R`](config.R): fdaPDE-cpp commit `d32e453` and core commit `472f9bd`.
 
-The default source is the sibling local checkout `../../../fdaPDE/fdaPDE-cpp`.
-Set `FDAPDE_CPP_REPOSITORY` to another local clone containing commit
-`d32e45361200b16deb03ebdfad5ee55a703ff73a` before regenerating `.env` with
-`Rscript config.R --profile macbook --write-env`. `FDAPDE_CORE_REPOSITORY` can
-select a local core clone; otherwise the source checkout supplies it.
-`cpp/compile.sh` validates or refreshes `libraries/fdaPDE-cpp` at the pinned
-outer commit and its core gitlink without requiring a published branch. It
-refuses a dirty destination, including submodule edits. Set `FDAPDE_CPP_MANAGED=false`
-to validate an existing checkout without changing it. Unpublished commits must
-be copied as Git objects when transferring the workflow to another machine.
+The default source is the published
+[`develop_fPLS` branch of fdaPDE-cpp](https://github.com/fdaPDE/fdaPDE-cpp/tree/develop_fPLS).
+`cpp/compile.sh` prepares `libraries/fdaPDE-cpp` at the pinned outer commit and
+its exact core gitlink. The core is fetched from the submodule URL recorded in
+that commit.
+Set `FDAPDE_CPP_REPOSITORY` to another remote or local clone containing the
+pinned commit, or `FDAPDE_CORE_REPOSITORY` to a matching core clone, before
+regenerating `.env` with `Rscript config.R --profile macbook --write-env`.
+The preparation script refuses a dirty destination, including submodule edits.
+Set `FDAPDE_CPP_MANAGED=false` to validate an existing checkout without changing it.
 Run `python3 tests/check_fdapde_dependency.py` in fPLS-simulation-study to check
 both consumers using temporary local fixture repositories.
 
