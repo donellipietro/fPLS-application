@@ -35,7 +35,7 @@ cat(glue::glue("Test name: {name_main_test}\n", .trim = FALSE))
 cat("\n")
 
 path_test_suite <- file.path("tests", test_suite)
-path_generate_options <- file.path(path_test_suite, "utils", "generate_options.R")
+path_generate_options <- file.path(path_test_suite, "generate_options.R")
 path_suite_config <- file.path(path_test_suite, "config.R")
 if (!dir.exists(path_test_suite) || !file.exists(path_generate_options)) {
   available_suites <- basename(list.dirs("tests", recursive = FALSE, full.names = TRUE))

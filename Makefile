@@ -12,6 +12,28 @@ endif
 SMOKE_TEST ?= 0
 COMPILE_JOBS ?=
 COMPILE_TARGET ?= $(if $(TARGET),$(TARGET),$(if $(EXEC),$(EXEC),$(SOURCE)))
+SLURM_ARRAY_LIMIT ?=
+SLURM_COMPILE ?= 0
+SLURM_AGGREGATE ?= 1
+SLURM_DRY_RUN ?= 0
+SLURM_CPUS ?=
+SLURM_MEM ?=
+SLURM_TIME ?=
+SLURM_MULTI_CPUS ?=
+SLURM_MULTI_MEM ?=
+SLURM_MULTI_TIME ?=
+SLURM_PARTITION ?=
+SLURM_ACCOUNT ?=
+SLURM_QOS ?=
+SLURM_AGG_CPUS ?=
+SLURM_AGG_MEM ?=
+SLURM_AGG_TIME ?=
+SLURM_COMPILE_CPUS ?=
+SLURM_COMPILE_MEM ?=
+SLURM_COMPILE_TIME ?=
+SLURM_COMPILE_JOBS ?=
+SLURM_COMPILE_MODEL ?=
+SLURM_COMPILE_TARGET ?=
 PBS_DRY_RUN ?= 0
 PBS_CPUS ?=
 PBS_MEM ?=
@@ -48,6 +70,9 @@ FDAPDE_CPP_BRANCH := $(call config_value,FDAPDE_CPP_BRANCH)
 FDAPDE_CPP_COMMIT := $(call config_value,FDAPDE_CPP_COMMIT)
 FDAPDE_CORE_COMMIT := $(call config_value,FDAPDE_CORE_COMMIT)
 FDAPDE_CPP_MANAGED := $(call config_value,FDAPDE_CPP_MANAGED)
+SINGULARITY_IMAGE := $(call config_value,SINGULARITY_IMAGE)
+SINGULARITY_IMAGE_SOURCE := $(call config_value,SINGULARITY_IMAGE_SOURCE)
+DOCKER_IMAGE := $(call config_value,DOCKER_IMAGE)
 TEST_EXECUTION_STRATEGY := $(call config_value,TEST_EXECUTION_STRATEGY)
 COMPILE_STRATEGY := $(call config_value,COMPILE_STRATEGY)
 
@@ -92,6 +117,12 @@ build:
 		$(RSCRIPT) -e 'source("config.R"); cat(paste0("  - ", available_profiles(), collapse = "\n"), "\n", sep = "")'; \
 	else \
 		$(MAKE) --no-print-directory config PROFILE="$(TESTBENCH_PROFILE)" && \
+		if [ -n "$(SINGULARITY_IMAGE)" ]; then \
+			./cpp/prepare_image.sh "$(SINGULARITY_IMAGE_SOURCE)" "$(SINGULARITY_IMAGE)"; \
+		fi && \
+		if [ -n "$(DOCKER_IMAGE)" ]; then \
+			./cpp/prepare_docker_image.sh "$(DOCKER_IMAGE)"; \
+		fi && \
 		$(MAKE) --no-print-directory install PROFILE="$(TESTBENCH_PROFILE)" && \
 		./cpp/prepare_json.sh && \
 		FDAPDE_CPP_MANAGED="$(FDAPDE_CPP_MANAGED)" \
@@ -101,9 +132,14 @@ build:
 			./cpp/clone_fdapde.sh "$(FDAPDE_CPP_REPOSITORY)" "$(FDAPDE_CPP_BRANCH)" "$(PATH_FDAPDE_CPP)"; \
 	fi
 
-## Compile every C++ model locally or through PBS according to the profile.
+## Compile every C++ model using the selected local, Slurm or PBS profile.
 compile_all: ensure_env
-	@if [ "$(COMPILE_STRATEGY)" = "pbs" ]; then \
+	@if [ "$(COMPILE_STRATEGY)" = "slurm" ]; then \
+		SLURM_COMPILE_CPUS="$(SLURM_COMPILE_CPUS)" SLURM_COMPILE_MEM="$(SLURM_COMPILE_MEM)" \
+		SLURM_COMPILE_TIME="$(SLURM_COMPILE_TIME)" SLURM_COMPILE_JOBS="$(SLURM_COMPILE_JOBS)" \
+		SLURM_DRY_RUN="$(SLURM_DRY_RUN)" SLURM_PARTITION="$(SLURM_PARTITION)" \
+		SLURM_ACCOUNT="$(SLURM_ACCOUNT)" SLURM_QOS="$(SLURM_QOS)" ./cpp/compile_slurm.sh --all; \
+	elif [ "$(COMPILE_STRATEGY)" = "pbs" ]; then \
 		PBS_COMPILE_CPUS="$(PBS_COMPILE_CPUS)" PBS_COMPILE_MEM="$(PBS_COMPILE_MEM)" \
 		PBS_COMPILE_TIME="$(PBS_COMPILE_TIME)" PBS_COMPILE_JOBS="$(PBS_COMPILE_JOBS)" \
 		PBS_COMPILE_DRY_RUN="$(PBS_COMPILE_DRY_RUN)" PBS_QUEUE="$(PBS_QUEUE)" \
@@ -118,7 +154,12 @@ compile: ensure_env
 	if [ -z "$(MODEL)" ]; then ./cpp/compile.sh --make-help; else \
 		args=("$(MODEL)"); \
 		if [ -n "$(COMPILE_TARGET)" ]; then args+=("$(COMPILE_TARGET)"); fi; \
-		if [ "$(COMPILE_STRATEGY)" = "pbs" ]; then \
+		if [ "$(COMPILE_STRATEGY)" = "slurm" ]; then \
+			SLURM_COMPILE_CPUS="$(SLURM_COMPILE_CPUS)" SLURM_COMPILE_MEM="$(SLURM_COMPILE_MEM)" \
+			SLURM_COMPILE_TIME="$(SLURM_COMPILE_TIME)" SLURM_COMPILE_JOBS="$(SLURM_COMPILE_JOBS)" \
+			SLURM_DRY_RUN="$(SLURM_DRY_RUN)" SLURM_PARTITION="$(SLURM_PARTITION)" \
+			SLURM_ACCOUNT="$(SLURM_ACCOUNT)" SLURM_QOS="$(SLURM_QOS)" ./cpp/compile_slurm.sh "$${args[@]}"; \
+		elif [ "$(COMPILE_STRATEGY)" = "pbs" ]; then \
 			PBS_COMPILE_CPUS="$(PBS_COMPILE_CPUS)" PBS_COMPILE_MEM="$(PBS_COMPILE_MEM)" \
 			PBS_COMPILE_TIME="$(PBS_COMPILE_TIME)" PBS_COMPILE_JOBS="$(PBS_COMPILE_JOBS)" \
 			PBS_COMPILE_DRY_RUN="$(PBS_COMPILE_DRY_RUN)" PBS_QUEUE="$(PBS_QUEUE)" \
@@ -130,7 +171,7 @@ ifneq ($(strip $(TEST_SUITE)),)
 run_test: MODEL := $(TEST_SUITE)
 run_test: compile
 endif
-## Run one public target using serial, parallel, or PBS execution.
+## Run one analysis or the all group using the selected execution profile.
 run_test: ensure_env
 	@if [ -z "$(TEST_SUITE)" ] || [ -z "$(TEST_NAME)" ]; then \
 		echo "Usage: make run_test TEST_SUITE=brain TEST_NAME=<target>"; \
@@ -138,9 +179,19 @@ run_test: ensure_env
 		case "$(TEST_EXECUTION_STRATEGY)" in \
 			serial) runner=./tests/run_tests.sh ;; \
 			parallel) runner=./tests/run_tests_parallel.sh ;; \
+			slurm) runner=./tests/run_tests_slurm.sh ;; \
 			pbs) runner=./tests/run_tests_pbs.sh ;; \
-			*) echo "Unknown TEST_EXECUTION_STRATEGY: $(TEST_EXECUTION_STRATEGY). Use serial, parallel, or pbs."; exit 1 ;; \
+			*) echo "Unknown TEST_EXECUTION_STRATEGY: $(TEST_EXECUTION_STRATEGY). Use serial, parallel, slurm, or pbs."; exit 1 ;; \
 		esac; \
+		SLURM_ARRAY_LIMIT="$(SLURM_ARRAY_LIMIT)" SLURM_COMPILE="$(SLURM_COMPILE)" \
+		SLURM_AGGREGATE="$(SLURM_AGGREGATE)" SLURM_DRY_RUN="$(SLURM_DRY_RUN)" \
+		SLURM_CPUS="$(SLURM_CPUS)" SLURM_MEM="$(SLURM_MEM)" SLURM_TIME="$(SLURM_TIME)" \
+		SLURM_MULTI_CPUS="$(SLURM_MULTI_CPUS)" SLURM_MULTI_MEM="$(SLURM_MULTI_MEM)" SLURM_MULTI_TIME="$(SLURM_MULTI_TIME)" \
+		SLURM_PARTITION="$(SLURM_PARTITION)" SLURM_ACCOUNT="$(SLURM_ACCOUNT)" SLURM_QOS="$(SLURM_QOS)" \
+		SLURM_AGG_CPUS="$(SLURM_AGG_CPUS)" SLURM_AGG_MEM="$(SLURM_AGG_MEM)" SLURM_AGG_TIME="$(SLURM_AGG_TIME)" \
+		SLURM_COMPILE_MODEL="$(SLURM_COMPILE_MODEL)" SLURM_COMPILE_TARGET="$(SLURM_COMPILE_TARGET)" \
+		SLURM_COMPILE_CPUS="$(SLURM_COMPILE_CPUS)" SLURM_COMPILE_MEM="$(SLURM_COMPILE_MEM)" \
+		SLURM_COMPILE_TIME="$(SLURM_COMPILE_TIME)" SLURM_COMPILE_JOBS="$(SLURM_COMPILE_JOBS)" \
 		PBS_DRY_RUN="$(PBS_DRY_RUN)" PBS_CPUS="$(PBS_CPUS)" PBS_MEM="$(PBS_MEM)" \
 		PBS_TIME="$(PBS_TIME)" PBS_MULTI_CPUS="$(PBS_MULTI_CPUS)" PBS_MULTI_MEM="$(PBS_MULTI_MEM)" \
 		PBS_MULTI_TIME="$(PBS_MULTI_TIME)" PBS_MAX_JOBS="$(PBS_MAX_JOBS)" PBS_QUEUE="$(PBS_QUEUE)" \
@@ -163,8 +214,13 @@ clean_test:
 	@if [ -z "$(TEST_SUITE)" ] || [ -z "$(TEST_NAME)" ]; then \
 		echo "Usage: make clean_test TEST_SUITE=brain TEST_NAME=<target>"; \
 	else \
-		$(RM) -r "$(PATH_RESULTS)/$(TEST_SUITE)/$(TEST_NAME)"; \
-		$(RM) -r "$(PATH_IMAGES)/$(TEST_SUITE)/$(TEST_NAME)"; \
+		resolved_tests="$$( $(RSCRIPT) src/resolve_test_names.R "$(TEST_SUITE)" "$(TEST_NAME)" )" || exit 1; \
+		for test_name in $$resolved_tests; do \
+			$(RM) -r "$(PATH_RESULTS)/$(TEST_SUITE)/$$test_name"; \
+			$(RM) -r "$(PATH_IMAGES)/$(TEST_SUITE)/$$test_name"; \
+			$(RM) -r "$(PATH_RESULTS)/$(TEST_SUITE)/aggregate/$$test_name"; \
+			$(RM) -r "$(PATH_IMAGES)/$(TEST_SUITE)/aggregate/$$test_name"; \
+		done; \
 		$(RM) -r "$(PATH_RESULTS)/$(TEST_SUITE)/aggregate/$(TEST_NAME)"; \
 	fi
 

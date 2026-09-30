@@ -40,5 +40,4 @@ containing `brain/`. The resulting `summary_by_H.csv` contains the median and qu
 (`rho_H`) for both references: the complete-data `H = 3` slider and each fold's own `H = 3`
 slider. The 50 overlapping training sets provide descriptive stability summaries.
 
-See [figure sources](../paper-figures/README.md) for the application panels and
-[provenance](../docs/provenance.md) for preprocessing and native dependency details.
+See [figure sources](../paper-figures/README.md) for the application panels.

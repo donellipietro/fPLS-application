@@ -48,8 +48,11 @@ Generated data, results, images, logs, queues, build products, libraries, and pr
 Install the following on your machine before running the workflow:
 
 - GNU Make, Bash, Git and R;
-- a C++20 compiler and Eigen;
+- a C++20 compiler and Eigen for the `macbook`, `linux` and `hpc-torque` profiles;
 - GNU Parallel and `bc` for parallel execution.
+
+The `windows` profile uses Docker Desktop with WSL2 integration. The `hpc-slurm` profile
+requires Slurm and Apptainer or SingularityCE. `hpc-torque` submits jobs through Torque/PBS.
 
 `make build` automatically installs the missing R packages listed in the
 [installation script](src/installation/install_femR.R), and prepares the nlohmann/json
@@ -61,15 +64,17 @@ Additional software needed to generate manuscript panels is listed in the
 
 ## Setup and execution
 
-From the repository root, prepare the local macOS runtime with the `macbook` profile.
-The build saves the selected profile in `.env`, and subsequent commands reuse it:
+Choose `macbook` on macOS, `linux` on Linux, `windows` under WSL2, or the matching
+`hpc-slurm` or `hpc-torque` cluster profile. Run the build from the repository root;
+it saves the selected profile in `.env`, and subsequent commands reuse it:
 
 ```sh
 make build PROFILE=macbook
 ```
 
-This profile uses Homebrew GCC 15 and Eigen paths. Override `CC`, `CXX`, or
-`PATH_EIGEN_INCLUDE` when running the build if your installation uses different paths.
+The `macbook` profile uses Homebrew GCC 15 and Eigen paths; `linux` uses system GCC and
+`/usr/include/eigen3`. Override `CC`, `CXX`, or `PATH_EIGEN_INCLUDE` if needed.
+The build prepares the configured container for `windows` and `hpc-slurm`.
 
 `TEST_SUITE=brain` selects the application suite, and `TEST_NAME` selects an analysis
 target. `make run_test` automatically compiles the required native executables:
@@ -110,4 +115,4 @@ The native driver uses public fdaPDE-cpp fPLS and fPCR models. GCV diagnostics c
 
 This repository starts from the finite-element basis, an already imputed predictor matrix, and group labels. It does not reconstruct upstream fMRI preprocessing, missing-value imputation, or selection of the seed region. The workflows are descriptive fitted-sample analyses and do not provide out-of-sample validation. Numerical reproduction requires the private preprocessed inputs and the pinned native fdaPDE stack.
 
-See [tests/README.md](tests/README.md), [paper-figures/README.md](paper-figures/README.md), and [docs/provenance.md](docs/provenance.md) for suite, figure-source, and provenance details.
+See the [analysis guide](tests/README.md) and [figure sources](paper-figures/README.md) for the application workflow and manuscript outputs.

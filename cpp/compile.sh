@@ -47,7 +47,7 @@ PROJECT_DIR="$(cd "${CPP_DIR}/.." && pwd)"
 PATH_NLOHMANN_JSON="${PROJECT_DIR}/libraries/nlohmann-json"
 
 if [[ ! -f "${PROJECT_DIR}/.env" ]]; then
-  echo "Error: .env not found. Run: make build TESTBENCH_PROFILE=<profile>" >&2
+  echo "Error: .env not found. Run: make build PROFILE=<profile>" >&2
   exit 1
 fi
 

@@ -19,7 +19,7 @@ read_matrix <- function(path) as.matrix(suppressWarnings(read.csv(path, check.na
 source("src/utils/directories.R")
 source("src/utils/options.R")
 source("tests/brain/config.R")
-source("tests/brain/utils/generate_options.R")
+source("tests/brain/generate_options.R")
 source("tests/brain/utils/models_evaluation.R")
 source("tests/brain/utils/loading_stability.R")
 source("tests/brain/utils/intrinsic_slider.R")
@@ -27,6 +27,14 @@ source("tests/brain/utils/slider_resampling.R")
 
 args <- commandArgs(trailingOnly = TRUE)
 requested <- if (length(args)) args[1] else name_main_test_default
+# Aggregate the complete-data reference before the resampling comparisons when all analyses are requested.
+if (identical(requested, "all")) {
+  for (target in test_groups$all) {
+    status <- system2("Rscript", c("tests/brain/aggregate_results.R", shQuote(target)))
+    if (status != 0L) stop("application aggregation failed for ", target)
+  }
+  quit(save = "no", status = 0)
+}
 if (!requested %in% test_groups$all) stop("unsupported application target: ", requested)
 cfg <- load_config()
 aggregate_dir <- file.path(cfg$PATH_RESULTS, test_suite, "aggregate", requested)

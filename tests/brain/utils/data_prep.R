@@ -166,3 +166,53 @@ write_brain_native_inputs <- function(data, raw_dir) {
   write.csv(data$boundary, files$boundary, row.names = FALSE)
   files
 }
+
+# Save the prepared sample, or only split identifiers for a resampling fit.
+# Keep omitted subjects out of the saved training inputs and record how the data were prepared.
+save_brain_prepared_data <- function(data, data_file, test_options) {
+  is_resampling <- isTRUE(test_options$resampling$enabled)
+  saveRDS(
+    if (is_resampling) {
+      list(
+        resampling = data$resampling[c(
+          "n_folds", "repeat_index", "fold_index", "seed", "train_indices", "test_indices", "test_counts"
+        )],
+        train_counts = data$counts,
+        mean_estimation_scope = data$centering,
+        input_md5 = data$input_md5,
+        preprocessing_md5 = data$preprocessing_md5
+      )
+    } else data,
+    data_file
+  )
+  jsonlite::write_json(
+    list(
+      schema_version = 1L,
+      source_path = test_options$data$source_path,
+      input_md5 = as.list(data$input_md5),
+      preprocessing_md5 = data$preprocessing_md5,
+      centering = data$centering,
+      mean_estimation = test_options$mean_estimation,
+      response_counts = as.list(data$counts),
+      n_subjects = data$dimensions$n_subjects,
+      n_nodes = data$dimensions$n_nodes,
+      n_tetrahedra = data$dimensions$n_tetrahedra,
+      resampling = if (is_resampling) list(
+        repeat_index = data$resampling$repeat_index,
+        fold_index = data$resampling$fold_index,
+        n_folds = data$resampling$n_folds,
+        train_indices = data$resampling$train_indices,
+        test_indices = data$resampling$test_indices,
+        test_counts = as.list(data$resampling$test_counts),
+        leakage_control = "omitted_subjects_not_used_functional_mean_response_GCV_and_slider_fit_on_training_only"
+      ) else NULL,
+      response_recoding = list(
+        CTRL = "sqrt(p_SCHZ / p_CTRL)",
+        SCHZ = "-sqrt(p_CTRL / p_SCHZ)"
+      )
+    ),
+    file.path(dirname(data_file), "data_preparation_provenance.json"),
+    auto_unbox = TRUE,
+    pretty = TRUE
+  )
+}
