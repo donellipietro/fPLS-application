@@ -86,7 +86,7 @@ local_fdapde_repository <- Sys.getenv(
 
 TESTBENCH_CONFIG_PROFILES <- list(
   # macOS: Homebrew compiler and independent local workers
-  macbook = application_profile(
+  macos = application_profile(
     output = local_output,
     fdapde_cpp = Sys.getenv(
       "PATH_FDAPDE_CPP", unset = file.path(local_repo, "libraries", "fdaPDE-cpp")
@@ -129,7 +129,7 @@ TESTBENCH_CONFIG_PROFILES <- list(
 
 # Linux: use the same local workflow with system compiler and Eigen paths.
 TESTBENCH_CONFIG_PROFILES$linux <- modifyList(
-  TESTBENCH_CONFIG_PROFILES$macbook,
+  TESTBENCH_CONFIG_PROFILES$macos,
   list(
     CC = Sys.getenv("CC", unset = "gcc"),
     CXX = Sys.getenv("CXX", unset = "g++"),

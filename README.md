@@ -48,7 +48,7 @@ Generated data, results, images, logs, queues, build products, libraries, and pr
 Install the following on your machine before running the workflow:
 
 - GNU Make, Bash, Git and R;
-- a C++20 compiler and Eigen for the `macbook`, `linux` and `hpc-torque` profiles;
+- a C++20 compiler and Eigen for the `macos`, `linux` and `hpc-torque` profiles;
 - GNU Parallel and `bc` for parallel execution.
 
 The `windows` profile uses Docker Desktop with WSL2 integration. The `hpc-slurm` profile
@@ -64,15 +64,15 @@ Additional software needed to generate manuscript panels is listed in the
 
 ## Setup and execution
 
-Choose `macbook` on macOS, `linux` on Linux, `windows` under WSL2, or the matching
+Choose `macos` on macOS, `linux` on Linux, `windows` under WSL2, or the matching
 `hpc-slurm` or `hpc-torque` cluster profile. Run the build from the repository root;
 it saves the selected profile in `.env`, and subsequent commands reuse it:
 
 ```sh
-make build PROFILE=macbook
+make build PROFILE=macos
 ```
 
-The `macbook` profile uses Homebrew GCC 15 and Eigen paths; `linux` uses system GCC and
+The `macos` profile uses Homebrew GCC 15 and Eigen paths; `linux` uses system GCC and
 `/usr/include/eigen3`. Override `CC`, `CXX`, or `PATH_EIGEN_INCLUDE` if needed.
 The build prepares the configured container for `windows` and `hpc-slurm`.
 

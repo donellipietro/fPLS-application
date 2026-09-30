@@ -61,7 +61,7 @@ resolve_config_profile <- function(profile = NULL) {
     profile,
     Sys.getenv("TESTBENCH_PROFILE", unset = ""),
     read_env_file_value("TESTBENCH_PROFILE"),
-    "macbook"
+    "macos"
   )
 
   profile
