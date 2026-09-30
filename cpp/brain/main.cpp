@@ -308,12 +308,10 @@ int main(int argc, char* argv[]) {
         }
         const auto params = read_parameters(read_parameter_file(argv[1]));
 
-        // dispatch fPLS as the base model, with fPCR as the alternative
-        if (params.model_name == "R1_fPLS") {
-            return run_fpls(params);
-        } else {
-            return run_fpcr(params);
-        }
+        // run the selected model
+        if (params.model_name == "R1_fPLS") return run_fpls(params);
+        if (params.model_name == "fPCR") return run_fpcr(params);
+        throw std::runtime_error("model must be R1_fPLS or fPCR");
     } catch (const std::exception& error) {
         // report input, preprocessing or fitting failures through the existing nonzero exit status
         std::cerr << "brain application failed: " << error.what() << '\n';
