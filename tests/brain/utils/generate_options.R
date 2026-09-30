@@ -1,6 +1,6 @@
 # = ========================================================================== =
 # - Script: generate_options.R
-# - Desc: Generates the four supported application option queues.
+# - Desc: Generates the three application analyses used in the manuscript.
 # = ========================================================================== =
 
 brain_model_catalog <- function() {
@@ -22,10 +22,8 @@ generate_options <- function(test_suite, name_main_test, path_queue) {
   models <- if (is_fpcr_h20) {
     list(names = "fPCR", labels = "fPCR", colors = "#2f855a")
   } else brain_model_catalog()
-  fit_native <- is_slider || (name_main_test != "smoke_overall_mean" && !SMOKE_TEST)
-  n_comp <- if (is_fpcr_h20) 20L else if (is_slider && SMOKE_TEST) 3L else if (
-    name_main_test %in% c("h_stability", "slider_resampling")
-  ) 6L else 3L
+  fit_native <- is_slider || !SMOKE_TEST
+  n_comp <- if (is_fpcr_h20) 20L else if (is_slider && SMOKE_TEST) 3L else 6L
   n_folds <- if (is_slider) {
     if (SMOKE_TEST) 2L else as.integer(Sys.getenv("FPLS_CV_FOLDS", unset = "5"))
   } else 1L

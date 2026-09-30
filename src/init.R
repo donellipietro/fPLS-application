@@ -21,7 +21,7 @@ args <- commandArgs(trailingOnly = TRUE)
 if (length(args) == 0) {
   ## Defaults
   test_suite     <- "brain"
-  name_main_test <- "smoke_overall_mean"
+  name_main_test <- "h_stability"
 } else {
   ## Set the requested configuration
   test_suite     <- args[1]

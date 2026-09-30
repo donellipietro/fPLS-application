@@ -77,16 +77,6 @@ if (length(failed)) {
   stop("native application fit failed")
 }
 
-if (identical(requested, "smoke_overall_mean")) {
-  write_json(list(
-    schema_version = 2L, requested = requested, run_complete = TRUE,
-    status = "smoke_data_preparation_complete",
-    validation_status = "smoke_data_preparation_only"
-  ), status_file, auto_unbox = TRUE, pretty = TRUE)
-  cat("Application smoke aggregation completed.\n")
-  quit(save = "no", status = 0)
-}
-
 regularization_boundaries <- do.call(rbind, lapply(evaluations, function(value) {
   if (is.null(value$regularization_boundaries)) return(NULL)
   cbind(
@@ -328,15 +318,6 @@ if (identical(requested, "h_stability")) {
     intrinsic_slider_threshold = h3_threshold_standardized
   ), file.path(aggregate_dir, "intrinsic_fpls_scores_H3.csv"), row.names = FALSE)
 
-  beta_coefficients <- setNames(lapply(3:6, function(h) read_matrix(
-    file.path(raw_dir, glue::glue("beta_coefficients_h{h}.csv"))
-  )), as.character(3:6))
-  beta_summary <- beta_stability(beta_coefficients, points, elements)$summary
-  write.csv(
-    subset(beta_summary, retained_components %in% 4:6),
-    file.path(aggregate_dir, "beta_stability_by_H.csv"), row.names = FALSE
-  )
-
   plot_values <- rbind(
     data.frame(retained_components = intrinsic_stability$retained_components, metric = "rho_H", value = intrinsic_stability$rho_H),
     data.frame(retained_components = intrinsic_stability$retained_components, metric = "e_H", value = intrinsic_stability$e_H)
@@ -358,13 +339,8 @@ if (identical(requested, "h_stability")) {
     metrics = c("tetrahedral_P1_FEM_mass_correlation_rho_H", "relative_FEM_mass_error_e_H"),
     aggregate = "intrinsic_fpls_slider_stability_by_H.csv"
   )
-  beta_status <- list(
-    reference = "native_Beta_H3", comparisons = "native_Beta_H4_to_H6",
-    metric = "tetrahedral_P1_FEM_mass_relative_norm_without_sign_flip"
-  )
 } else {
   boundary_status <- "not_requested_for_fpcr_H20_separation_diagnostic"
-  beta_status <- "not_requested_for_fpcr"
 }
 
 write_json(list(
@@ -382,7 +358,6 @@ write_json(list(
     sensitivity_class = "SCHZ", specificity_class = "CTRL"
   ),
   decision_boundary_loading_stability = boundary_status,
-  beta_stability = beta_status,
   complete_data_resources = "complete_data_resources.csv"
 ), status_file, auto_unbox = TRUE, pretty = TRUE)
 cat("Application aggregation completed.\n")

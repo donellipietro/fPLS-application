@@ -1,6 +1,6 @@
 # = ========================================================================== =
 # - Script: loading_stability.R
-# - Desc: FEM mass-norm helpers and beta stability comparisons.
+# - Desc: FEM mass-norm helpers for intrinsic-slider stability comparisons.
 # = ========================================================================== =
 
 tetrahedral_volumes <- function(points, elements) {
@@ -41,17 +41,4 @@ mass_stability <- function(reference, candidate, elements, volumes, sign_align =
     reference_mass_norm = reference_norm,
     candidate_mass_norm = candidate_norm
   )
-}
-
-beta_stability <- function(beta_coefficients, points, elements, reference_h = 3L) {
-  elements <- matrix(as.integer(elements), ncol = 4L)
-  volumes <- tetrahedral_volumes(points, elements)
-  reference <- beta_coefficients[[as.character(reference_h)]]
-  comparisons <- lapply(sort(as.integer(names(beta_coefficients))), function(h) {
-    cbind(
-      retained_components = h,
-      mass_stability(reference, beta_coefficients[[as.character(h)]], elements, volumes, sign_align = FALSE)
-    )
-  })
-  list(summary = do.call(rbind, comparisons), total_volume = sum(volumes))
 }
