@@ -52,9 +52,22 @@ Install the following on your machine before running the workflow:
 - GNU Parallel and `bc` for parallel execution.
 
 `make build` automatically installs the missing R packages listed in the
-[installation script](src/installation/install_femR.R), and downloads the nlohmann/json
-headers and `fdaPDE-cpp` with its `fdaPDE/core` dependency. The native revisions are pinned in
-[`config.R`](config.R): fdaPDE-cpp commit `fbf764f` and core commit `472f9bd`.
+[installation script](src/installation/install_femR.R), and prepares the nlohmann/json
+headers and the pinned local `fdaPDE-cpp` stack. The native revisions are pinned in
+[`config.R`](config.R): fdaPDE-cpp commit `9864fa6` and core commit `472f9bd`.
+
+The default source is the sibling local checkout `../../../fdaPDE/fdaPDE-cpp`.
+Set `FDAPDE_CPP_REPOSITORY` to another local clone containing commit
+`9864fa6eb94072ad2b79de989db8a46e4ae81b1e` before regenerating `.env` with
+`Rscript config.R --profile macbook --write-env`. `FDAPDE_CORE_REPOSITORY` can
+select a local core clone; otherwise the source checkout supplies it.
+`cpp/compile.sh` validates or refreshes `libraries/fdaPDE-cpp` at the pinned
+outer commit and its core gitlink without requiring a published branch. It
+refuses a dirty destination, including submodule edits. Set `FDAPDE_CPP_MANAGED=false`
+to validate an existing checkout without changing it. Unpublished commits must
+be copied as Git objects when transferring the workflow to another machine.
+Run `python3 tests/check_fdapde_dependency.py` in fPLS-simulation-study to check
+both consumers using temporary local fixture repositories.
 
 Additional software needed to generate manuscript panels is listed in the
 [figure guide](paper-figures/README.md#prerequisites).
@@ -99,6 +112,10 @@ See the [figure guide](paper-figures/README.md) for output locations and further
 The [analysis guide](tests/README.md) also explains how to generate the supplementary
 slider-similarity table from the 50 saved resampling fits. These are training-fit stability
 summaries; the overlapping fits are not independent replicates.
+
+## Native regression outputs
+
+The native driver uses public fdaPDE-cpp fPLS and fPCR models. GCV diagnostics contain the candidate evaluations and EDF saved during calibration, with no diagnostic refit. Application output schema 4 renames `replay_minimum` to `grid_minimum` and exports fPCR predictions, beta coefficients and errors for every response column. Scalar classification metrics retain their original interpretation. See [the native output schema](cpp/brain/OUTPUT_SCHEMA.md) for column order, telemetry and timing details.
 
 ## Reproducibility limits
 

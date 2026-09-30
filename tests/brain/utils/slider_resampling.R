@@ -12,6 +12,8 @@ evaluate_slider_resampling <- function(model, data, test_options) {
     return(list(failed = TRUE, status = model$status, validation_status = "native_fit_failed"))
   }
 
+  if (nrow(model$results$Y_loadings) != 1L) stop("intrinsic classification slider requires one response column")
+
   regularization_boundaries <- regularization_boundary_diagnostics(model, test_options)
   report_production_grid_boundaries(
     regularization_boundaries, test_options$provenance$validation_status

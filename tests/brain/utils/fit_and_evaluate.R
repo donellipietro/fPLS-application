@@ -39,12 +39,13 @@ native_model_matches_options <- function(model, model_name, test_options, data, 
       same(configured("fixed_loading_lambda"), test_options$regularization$fixed_loading_lambda)
   }
   fpca_implementation_matches <- if (identical(model_name, "fPCR")) {
-    identical(telemetry$fpca_implementation, "application_local_with_explicit_edf_control") &&
+    identical(telemetry$fpca_implementation, "public_fdaPDE_fPCR_with_explicit_edf_control") &&
       identical(telemetry$fpca_gcv_edf$probe_count_source, "gcv_probes") &&
       identical(telemetry$fpca_gcv_edf$seed_source, "gcv_seed") &&
       identical(telemetry$fpca_gcv_edf$seed_mode, "explicit_deterministic")
   } else TRUE
-  identical(telemetry$model, model_name) &&
+  same(telemetry$schema_version, 4L) &&
+    identical(telemetry$model, model_name) &&
     same(telemetry$n_components, test_options$model$n_comp) &&
     same(configured("calibration"), test_options$regularization$calibration) &&
     fpca_implementation_matches &&

@@ -37,9 +37,9 @@ application_profile <- function(
     PATH_EIGEN_INCLUDE = Sys.getenv("PATH_EIGEN_INCLUDE", unset = eigen_include),
     FDAPDE_CPP_REPOSITORY = fdapde_repository,
     FDAPDE_CORE_REPOSITORY = fdapde_core_repository,
-    FDAPDE_CPP_BRANCH = Sys.getenv("FDAPDE_CPP_BRANCH", unset = "develop_fPLS"),
+    FDAPDE_CPP_BRANCH = Sys.getenv("FDAPDE_CPP_BRANCH", unset = "codex/fpls-diagnostics-fpcr"),
     FDAPDE_CPP_COMMIT = Sys.getenv(
-      "FDAPDE_CPP_COMMIT", unset = "fbf764fafe81d21d3a25f89c5f53f65c7cee8514"
+      "FDAPDE_CPP_COMMIT", unset = "9864fa6eb94072ad2b79de989db8a46e4ae81b1e"
     ),
     FDAPDE_CORE_COMMIT = Sys.getenv(
       "FDAPDE_CORE_COMMIT", unset = "472f9bd374a63fbf851106e5c45f8870e31e8189"
@@ -68,7 +68,7 @@ local_repo <- normalizePath(".", mustWork = FALSE)
 local_output <- Sys.getenv("TESTBENCH_OUTPUT", unset = local_repo)
 local_fdapde_repository <- Sys.getenv(
   "FDAPDE_CPP_REPOSITORY",
-  unset = "https://github.com/fdaPDE/fdaPDE-cpp.git"
+  unset = normalizePath("../../../fdaPDE/fdaPDE-cpp", mustWork = FALSE)
 )
 
 TESTBENCH_CONFIG_PROFILES <- list(
@@ -79,7 +79,7 @@ TESTBENCH_CONFIG_PROFILES <- list(
     ),
     fdapde_repository = local_fdapde_repository,
     fdapde_core_repository = Sys.getenv(
-      "FDAPDE_CORE_REPOSITORY", unset = "https://github.com/fdaPDE/fdaPDE-core.git"
+      "FDAPDE_CORE_REPOSITORY", unset = file.path(local_fdapde_repository, "fdaPDE/core")
     ),
     cc = "/opt/homebrew/bin/gcc-15",
     cxx = "/opt/homebrew/bin/g++-15",
@@ -96,10 +96,10 @@ TESTBENCH_CONFIG_PROFILES <- list(
       output = output,
       fdapde_cpp = fdapde,
       fdapde_repository = Sys.getenv(
-        "FDAPDE_CPP_REPOSITORY", unset = "https://github.com/fdaPDE/fdaPDE-cpp.git"
+        "FDAPDE_CPP_REPOSITORY", unset = normalizePath("../../../fdaPDE/fdaPDE-cpp", mustWork = FALSE)
       ),
       fdapde_core_repository = Sys.getenv(
-        "FDAPDE_CORE_REPOSITORY", unset = "https://github.com/fdaPDE/fdaPDE-core.git"
+        "FDAPDE_CORE_REPOSITORY", unset = file.path(local_fdapde_repository, "fdaPDE/core")
       ),
       cc = "gcc",
       cxx = "g++",

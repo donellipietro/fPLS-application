@@ -101,8 +101,9 @@ evaluate_results <- function(model, data, test_options) {
   n_comp <- test_options$model$n_comp
   regularization_boundaries <- regularization_boundary_diagnostics(model, test_options)
   report_production_grid_boundaries(regularization_boundaries, test_options$provenance$validation_status)
-  separation <- do.call(rbind, lapply(seq_len(n_comp), function(h) {
-    oriented <- orient_ctrl_scores(data$labels, as.numeric(model$results$Y_hat[[h]]))
+  # scalar classification diagnostics have a defined label interpretation only for one response
+  separation <- if (ncol(data$Y) == 1L) do.call(rbind, lapply(seq_len(n_comp), function(h) {
+    oriented <- orient_ctrl_scores(data$labels, model$results$Y_hat[[h]][, 1L])
     scores <- oriented$scores
     threshold <- best_threshold_metrics(data$labels, scores)
     data.frame(
@@ -113,14 +114,22 @@ evaluate_results <- function(model, data, test_options) {
       sensitivity = threshold[["sensitivity"]],
       specificity = threshold[["specificity"]]
     )
+  })) else NULL
+  if (!is.null(separation)) {
+    separation$perfect_separation <- separation$sensitivity == 1 & separation$specificity == 1
+  }
+  response_errors <- do.call(rbind, lapply(seq_len(n_comp), function(h) {
+    sse <- colSums((data$Y - model$results$Y_hat[[h]])^2)
+    data.frame(prefix_components = h, response = seq_len(ncol(data$Y)), sse = sse, mse = sse / nrow(data$Y))
   }))
-  separation$perfect_separation <- separation$sensitivity == 1 & separation$specificity == 1
 
   list(
     failed = FALSE,
     status = 0L,
     n_comp = n_comp,
     separation = separation,
+    classification_status = if (ncol(data$Y) == 1L) "scalar_response" else "not_applicable_multivariate_response",
+    response_errors = response_errors,
     execution_time = model$results$execution_time,
     peak_ram_mib = model$results$peak_ram_mib,
     iteration_count = model$results$iteration_counts,

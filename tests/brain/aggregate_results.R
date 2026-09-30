@@ -213,6 +213,28 @@ if (!is.null(fpca_gcv)) {
   ggsave(plot_file(image_dir, "fpca_gcv_curves"), curve_plot, width = 10, height = 12, dpi = 180)
 }
 
+response_errors <- do.call(rbind, lapply(evaluations, function(value) {
+  if (is.null(value$response_errors)) return(NULL)
+  cbind(scenario = value$scenario, dimension_reducer = value$dimension_reducer, value$response_errors)
+}))
+if (!is.null(response_errors)) write.csv(
+  response_errors, file.path(aggregate_dir, "response_errors_by_H.csv"), row.names = FALSE
+)
+if (any(vapply(evaluations, function(value) {
+  identical(value$classification_status, "not_applicable_multivariate_response")
+}, logical(1)))) {
+  # regression exports remain complete when scalar class-separation plots have no defined interpretation
+  write_json(list(
+    schema_version = 3L, requested = requested,
+    run_complete = length(setdiff(expected_evaluations, names(evaluations))) == 0L,
+    status = "regression_outputs_complete_classification_not_applicable",
+    response_errors = "response_errors_by_H.csv",
+    classification = "not_applicable_multivariate_response"
+  ), status_file, auto_unbox = TRUE, pretty = TRUE)
+  cat("Multivariate regression aggregation completed; classification separation is unavailable.\n")
+  quit(save = "no", status = 0)
+}
+
 separation <- do.call(rbind, lapply(evaluations, function(value) {
   if (is.null(value$separation)) return(NULL)
   cbind(

@@ -70,7 +70,7 @@ prepare_fdapde() {
     return
   fi
 
-  # Refresh the profile-selected local stack once per compile invocation.
+  # validate or refresh the pinned stack once per compile invocation
   path_required FDAPDE_CPP_REPOSITORY
   path_required FDAPDE_CPP_BRANCH
   path_required PATH_FDAPDE_CPP

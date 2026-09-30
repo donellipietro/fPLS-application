@@ -208,17 +208,35 @@ fit_native_model <- function(model_name, data, path_list, test_options) {
   check_matrix_shape(raw$functional_mean_locations, n_nodes, 1L, "functional mean at mesh nodes")
   check_matrix_shape(raw$Y_space_directions, n_responses, n_comp, "Y directions")
   check_matrix_shape(raw$X_latent_scores, n_units, n_comp, "X scores")
-  check_matrix_shape(raw$Y_latent_scores, n_units, n_comp, "Y scores")
+  y_score_columns <- if (identical(model_name, "fPCR")) n_comp * n_responses else n_comp
+  check_matrix_shape(raw$Y_latent_scores, n_units, y_score_columns, "Y scores/contributions")
+  if (identical(model_name, "fPCR")) {
+    if (!identical(telemetry$y_latent_scores_column_order, "component_major_response_minor")) {
+      stop("fPCR response contributions have an unsupported column order")
+    }
+    raw$response_diagnostics <- suppressWarnings(read.csv(
+      file.path(raw_dir, "response_diagnostics.csv"), check.names = FALSE
+    ))
+    expected_columns <- c("component", "response", "sse", "mse")
+    if (!all(expected_columns %in% names(raw$response_diagnostics)) ||
+        nrow(raw$response_diagnostics) != n_comp * n_responses) {
+      stop("fPCR response diagnostics have the wrong schema")
+    }
+  }
   check_matrix_shape(raw$X_loadings, n_nodes, n_comp, "X loadings")
   check_matrix_shape(raw$Y_loadings, n_responses, n_comp, "Y loadings")
   check_matrix_shape(raw$fpca_lambdas, n_comp, 1L, "fPCA lambdas")
   check_matrix_shape(raw$score_projection_scales, n_comp, 1L, "score projection scales")
   if (!is.null(raw$fpls_loading_gcv)) {
     expected_columns <- c(
-      "component", "lambda", "edf", "gcv", "selected_by_fit", "replay_minimum"
+      "component", "lambda", "edf", "gcv", "selected_by_fit", "grid_minimum"
     )
     if (!all(expected_columns %in% names(raw$fpls_loading_gcv))) {
       stop("fPLS loading GCV diagnostics have the wrong columns")
+    }
+    if (!identical(telemetry$fpls_loading_gcv_source, "calibration_evaluations_saved_during_fit") ||
+        telemetry$diagnostic_refits != 0) {
+      stop("fPLS loading diagnostics must come from saved calibration evaluations")
     }
     grid_size <- length(test_options$regularization$lambda_grid)
     component_rows <- table(raw$fpls_loading_gcv$component)
@@ -241,7 +259,9 @@ fit_native_model <- function(model_name, data, path_list, test_options) {
   }
 
   raw$Y_hat <- lapply(seq_len(n_comp), function(h) {
-    read_cpp_matrix(file.path(raw_dir, glue::glue("y_hat_h{h}.csv")))
+    value <- read_cpp_matrix(file.path(raw_dir, glue::glue("y_hat_h{h}.csv")))
+    check_matrix_shape(value, n_units, n_responses, "Y prediction")
+    value
   })
   raw$X_hat_locations <- if (isTRUE(test_options$output$write_reconstructions)) {
     lapply(seq_len(n_comp), function(h) {
@@ -250,7 +270,9 @@ fit_native_model <- function(model_name, data, path_list, test_options) {
   } else NULL
   raw$Beta_coefficients <- if (isTRUE(test_options$output$write_beta)) {
     lapply(seq_len(n_comp), function(h) {
-      read_cpp_matrix(file.path(raw_dir, glue::glue("beta_coefficients_h{h}.csv")))
+      value <- read_cpp_matrix(file.path(raw_dir, glue::glue("beta_coefficients_h{h}.csv")))
+      check_matrix_shape(value, telemetry$n_basis, n_responses, "beta coefficients")
+      value
     })
   } else NULL
 
