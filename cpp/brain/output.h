@@ -25,7 +25,7 @@ inline void write_functional_mean_output(
 /** @brief export fPLS latent quantities, component-prefix fits and calibration/convergence metadata */
 template <typename Space, typename Model>
 int write_fpls_output(
-  const application_parameters& params, const Space& space, const Model& model, const matrix_t& X, const matrix_t& Y,
+  const simulation_parameters& params, const Space& space, const Model& model, const matrix_t& X, const matrix_t& Y,
   const functional_mean_fit& mean_fit, time_point_t wall_start, time_point_t setup_end, time_point_t fit_end,
   time_point_t centering_start, time_point_t centering_end) {
     const auto& direction_lambdas = model.direction_lambda();
@@ -163,7 +163,7 @@ int write_fpls_output(
 /** @brief export fPCR score projections, component-prefix fits and explicit-EDF calibration metadata */
 template <typename Space, typename Model>
 int write_fpcr_output(
-  const application_parameters& params, const Space& space, const Model& model, const matrix_t& X, const matrix_t& Y,
+  const simulation_parameters& params, const Space& space, const Model& model, const matrix_t& X, const matrix_t& Y,
   const functional_mean_fit& mean_fit, time_point_t wall_start, time_point_t setup_end, time_point_t fit_end,
   time_point_t centering_start, time_point_t centering_end) {
     const auto& scores = model.X_latent_scores();

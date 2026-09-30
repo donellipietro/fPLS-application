@@ -130,7 +130,7 @@ inline json read_parameter_file(const std::string& file) {
 }
 
 /** @brief validated mesh inputs, centering and model settings for the brain application */
-struct application_parameters {
+struct simulation_parameters {
     std::string model_name;
     int n_comp;
     int max_iter;
@@ -157,8 +157,8 @@ struct application_parameters {
 };
 
 /** @brief read application inputs and validate model, centering and solver settings */
-inline application_parameters read_parameters(const json& values) {
-    application_parameters params;
+inline simulation_parameters read_parameters(const json& values) {
+    simulation_parameters params;
     params.model_name = values.at("model").get<std::string>();
     params.n_comp = values.at("n_comp").get<int>();
     params.max_iter = values.at("max_iter").get<int>();
@@ -180,7 +180,7 @@ inline application_parameters read_parameters(const json& values) {
         throw std::runtime_error("model must be R1_fPLS or fPCR");
     }
 
-    // functional centering is performed explicitly in main with the training-only smoothed mean
+    // each model run centers its observations with the training-only smoothed mean
     if (values.at("center").get<bool>()) {
         throw std::runtime_error(
           "model-internal centering must stay false; the native preprocessing "

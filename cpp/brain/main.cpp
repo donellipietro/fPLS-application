@@ -2,21 +2,101 @@
 
 #include "output.h"
 
-/** @brief fit supervised rank-one fPLS components on functionally centered training data */
-template <typename Space, typename Penalty, typename Load>
-int run_fpls(
-  const application_parameters& params,   // input paths, calibration and output settings
-  Space& space,                           // tetrahedral P1 finite-element space
-  GeoFrame<Triangulation<3, 3>>& data,    // centered functional observations at mesh nodes
-  const matrix_t& X,                      // centered predictors: subjects by mesh nodes
-  const matrix_t& Y,                      // responses: subjects by response variables
-  const Penalty& penalty,                 // weak Laplacian bilinear form
-  const Load& load,                       // linear form with zero forcing
-  const functional_mean_fit& mean_fit,    // fitted functional mean and GCV diagnostics
-  time_point_t wall_start,                // start of the native application workflow
-  time_point_t centering_start,           // start of functional mean estimation
-  time_point_t centering_end              // completion of predictor centering
-) {
+/** @brief prepare and center brain observations, fit rank-one fPLS and export component prefixes */
+int run_fpls(const simulation_parameters& params) {
+    // begin native workflow timing before loading the training data and mesh
+    const auto wall_start = std::chrono::steady_clock::now();
+
+    // load training predictors with subjects in rows and mesh nodes in columns, together with the responses
+    const matrix_t X_raw = read_matrix(params.X_file);
+    const matrix_t Y = read_matrix(params.Y_file);
+
+    // read node coordinates, tetrahedral connectivity and boundary-node markers
+    const matrix_t nodes = read_matrix(params.nodes_file);
+    const matrix_t elements_source = read_matrix(params.elements_file);
+    const matrix_t boundary_source = read_matrix(params.boundary_file);
+
+    // report the training-data size before constructing the finite-element domain
+    std::cout << "- Loaded brain data: " << X_raw.rows() << " subjects, " << X_raw.cols() << " mesh nodes" << std::endl;
+
+    // check mesh input shapes and agreement between subjects, responses and observation nodes
+    if (nodes.cols() != 3 || elements_source.cols() != 4 || boundary_source.cols() != 1) {
+        throw std::runtime_error("invalid 3D mesh input dimensions");
+    }
+    if (X_raw.rows() != Y.rows() || X_raw.cols() != nodes.rows()) {
+        throw std::runtime_error("X, Y, and mesh-node dimensions do not agree");
+    }
+
+    // convert connectivity and boundary markers to the integer format required by the mesh constructor
+    Eigen::Matrix<int, Eigen::Dynamic, Eigen::Dynamic> elements = elements_source.cast<int>();
+    Eigen::Matrix<int, Eigen::Dynamic, Eigen::Dynamic> boundary = boundary_source.cast<int>();
+
+    // report mesh size before assembling the volumetric domain and function space
+    std::cout << "- Building tetrahedral FEM space: " << elements.rows() << " elements" << std::endl;
+
+    // define the volumetric domain and continuous piecewise-linear finite-element space
+    Triangulation<3, 3> domain(nodes, elements, boundary, cache_cells);
+    FeSpace space(domain, P1<1>);
+
+    // define trial and test functions for the variational smoothing forms
+    TrialFunction f(space);
+    TestFunction v(space);
+
+    // define the weak Laplacian bilinear form for the elliptic smoothing penalties
+    const auto penalty = integral(domain)(dot(grad(f), grad(v)));
+
+    // define the homogeneous PDE load with zero forcing
+    ZeroField<3> forcing;
+    const auto load = integral(domain)(forcing * v);
+
+    // measurements coincide with mesh nodes, so no separate observation grid is needed
+    GeoFrame data(domain);
+    auto& layer = data.template insert_scalar_layer<POINT>("observations", MESH_NODES);
+
+    // begin functional-centering timing before preparing the mean smoother
+    const auto centering_start = std::chrono::steady_clock::now();
+
+    // build the elliptic smoother for the training-only mean with equal nodal weights
+    auto mean_penalty = fe_ls_elliptic(penalty, load);
+    fdapde::internals::fe_ls_elliptic mean_smoother;
+    mean_smoother.discretize(mean_penalty.get());
+    mean_smoother.analyze_data(data, vector_t::Ones(data[0].rows()).asDiagonal());
+
+    // report the candidate-grid size before calibrating the functional mean
+    std::cout << "- Fitting training-only functional mean by GCV over " << params.mean_lambda_grid.size()
+              << " candidate lambda(s)" << std::endl;
+
+    // smooth the empirical training mean and select its lambda by GCV
+    const functional_mean_fit mean_fit = fit_functional_mean_gcv(
+      X_raw,                     // training predictors before functional centering
+      mean_smoother,             // elliptic smoother for the mean function
+      params.mean_lambda_grid,   // candidate lambdas for smoothing the empirical mean
+      params.mean_gcv_probes,    // number of Hutchinson probes for mean effective degrees of freedom
+      params.mean_gcv_seed       // seed for stochastic mean effective degrees of freedom
+    );
+
+    // subtract the same training-only smooth mean from each subject's predictor curve
+    const matrix_t X = X_raw.rowwise() - mean_fit.locations.transpose();
+
+    // require finite centered predictors before binding them to the model data layer
+    if (!X.allFinite()) throw std::runtime_error("functional-mean centered data are non-finite");
+
+    // store locations in rows and subjects in columns as required by GeoFrame
+    layer.load_blk("X", X.transpose());
+
+    // finish functional-centering timing once the centered observations have been loaded
+    const auto centering_end = std::chrono::steady_clock::now();
+
+    // report the selected mean smoothing parameter before exporting preprocessing diagnostics
+    std::cout << "- Functional mean completed: lambda=" << mean_fit.selected_lambda << std::endl;
+
+    // export the estimated functional mean and its GCV diagnostics
+    write_functional_mean_output(
+      params.output_dir,        // destination for the preprocessing outputs
+      mean_fit,                 // selected mean in coefficient and nodal form, with its EDF/GCV diagnostics
+      params.mean_lambda_grid   // candidate lambdas paired with the exported EDF and GCV values
+    );
+
     // model definition: separate elliptic smoothers for directions and reconstruction loadings
     auto direction_penalty = fe_ls_elliptic(penalty, load);
     auto loading_penalty = fe_ls_elliptic(penalty, load);
@@ -45,7 +125,6 @@ int run_fpls(
           params.gcv_probes,    // number of Hutchinson probes for effective degrees of freedom
           params.gcv_seed       // seed for stochastic effective degrees of freedom
         );
-
     } else if (params.calibration == "fixed") {
         // wrap fixed direction/loading lambdas in the matrix form required by the fit overload
         Eigen::Matrix<double, 1, 1> direction_lambda;
@@ -61,7 +140,6 @@ int run_fpls(
           params.max_iter,    // maximum alternating direction updates per component
           params.tolerance    // objective tolerance for stopping and increase diagnostics
         );
-
     } else {
         throw std::runtime_error("calibration must be gcv or fixed");
     }
@@ -76,25 +154,108 @@ int run_fpls(
     );
 }
 
-/** @brief fit public fPCR components and response regressions on functionally centered training data */
-template <typename Space, typename Penalty, typename Load>
-int run_fpcr(
-  const application_parameters& params,   // input paths, calibration and output settings
-  Space& space,                           // tetrahedral P1 finite-element space
-  GeoFrame<Triangulation<3, 3>>& data,    // centered functional observations at mesh nodes
-  const matrix_t& X,                      // centered predictors: subjects by mesh nodes
-  const matrix_t& Y,                      // responses: subjects by response variables
-  const Penalty& penalty,                 // weak Laplacian bilinear form
-  const Load& load,                       // linear form with zero forcing
-  const functional_mean_fit& mean_fit,    // fitted functional mean and GCV diagnostics
-  time_point_t wall_start,                // start of the native application workflow
-  time_point_t centering_start,           // start of functional mean estimation
-  time_point_t centering_end              // completion of predictor centering
-) {
+/** @brief prepare and center brain observations, fit fPCR and export its prefix regressions */
+int run_fpcr(const simulation_parameters& params) {
+    // begin native workflow timing before loading the training data and mesh
+    const auto wall_start = std::chrono::steady_clock::now();
+
+    // load training predictors with subjects in rows and mesh nodes in columns, together with the responses
+    const matrix_t X_raw = read_matrix(params.X_file);
+    const matrix_t Y = read_matrix(params.Y_file);
+
+    // read node coordinates, tetrahedral connectivity and boundary-node markers
+    const matrix_t nodes = read_matrix(params.nodes_file);
+    const matrix_t elements_source = read_matrix(params.elements_file);
+    const matrix_t boundary_source = read_matrix(params.boundary_file);
+
+    // report the training-data size before constructing the finite-element domain
+    std::cout << "- Loaded brain data: " << X_raw.rows() << " subjects, " << X_raw.cols() << " mesh nodes" << std::endl;
+
+    // check mesh input shapes and agreement between subjects, responses and observation nodes
+    if (nodes.cols() != 3 || elements_source.cols() != 4 || boundary_source.cols() != 1) {
+        throw std::runtime_error("invalid 3D mesh input dimensions");
+    }
+    if (X_raw.rows() != Y.rows() || X_raw.cols() != nodes.rows()) {
+        throw std::runtime_error("X, Y, and mesh-node dimensions do not agree");
+    }
+
+    // convert connectivity and boundary markers to the integer format required by the mesh constructor
+    Eigen::Matrix<int, Eigen::Dynamic, Eigen::Dynamic> elements = elements_source.cast<int>();
+    Eigen::Matrix<int, Eigen::Dynamic, Eigen::Dynamic> boundary = boundary_source.cast<int>();
+
+    // report mesh size before assembling the volumetric domain and function space
+    std::cout << "- Building tetrahedral FEM space: " << elements.rows() << " elements" << std::endl;
+
+    // define the volumetric domain and continuous piecewise-linear finite-element space
+    Triangulation<3, 3> domain(nodes, elements, boundary, cache_cells);
+    FeSpace space(domain, P1<1>);
+
+    // define trial and test functions for the variational smoothing forms
+    TrialFunction f(space);
+    TestFunction v(space);
+
+    // define the weak Laplacian bilinear form for the elliptic smoothing penalties
+    const auto penalty = integral(domain)(dot(grad(f), grad(v)));
+
+    // define the homogeneous PDE load with zero forcing
+    ZeroField<3> forcing;
+    const auto load = integral(domain)(forcing * v);
+
+    // measurements coincide with mesh nodes, so no separate observation grid is needed
+    GeoFrame data(domain);
+    auto& layer = data.template insert_scalar_layer<POINT>("observations", MESH_NODES);
+
+    // begin functional-centering timing before preparing the mean smoother
+    const auto centering_start = std::chrono::steady_clock::now();
+
+    // build the elliptic smoother for the training-only mean with equal nodal weights
+    auto mean_penalty = fe_ls_elliptic(penalty, load);
+    fdapde::internals::fe_ls_elliptic mean_smoother;
+    mean_smoother.discretize(mean_penalty.get());
+    mean_smoother.analyze_data(data, vector_t::Ones(data[0].rows()).asDiagonal());
+
+    // report the candidate-grid size before calibrating the functional mean
+    std::cout << "- Fitting training-only functional mean by GCV over " << params.mean_lambda_grid.size()
+              << " candidate lambda(s)" << std::endl;
+
+    // smooth the empirical training mean and select its lambda by GCV
+    const functional_mean_fit mean_fit = fit_functional_mean_gcv(
+      X_raw,                     // training predictors before functional centering
+      mean_smoother,             // elliptic smoother for the mean function
+      params.mean_lambda_grid,   // candidate lambdas for smoothing the empirical mean
+      params.mean_gcv_probes,    // number of Hutchinson probes for mean effective degrees of freedom
+      params.mean_gcv_seed       // seed for stochastic mean effective degrees of freedom
+    );
+
+    // subtract the same training-only smooth mean from each subject's predictor curve
+    const matrix_t X = X_raw.rowwise() - mean_fit.locations.transpose();
+
+    // require finite centered predictors before binding them to the model data layer
+    if (!X.allFinite()) throw std::runtime_error("functional-mean centered data are non-finite");
+
+    // store locations in rows and subjects in columns as required by GeoFrame
+    layer.load_blk("X", X.transpose());
+
+    // finish functional-centering timing once the centered observations have been loaded
+    const auto centering_end = std::chrono::steady_clock::now();
+
+    // report the selected mean smoothing parameter before exporting preprocessing diagnostics
+    std::cout << "- Functional mean completed: lambda=" << mean_fit.selected_lambda << std::endl;
+
+    // export the estimated functional mean and its GCV diagnostics
+    write_functional_mean_output(
+      params.output_dir,        // destination for the preprocessing outputs
+      mean_fit,                 // selected mean in coefficient and nodal form, with its EDF/GCV diagnostics
+      params.mean_lambda_grid   // candidate lambdas paired with the exported EDF and GCV values
+    );
+
     // model definition: smooth principal components followed by OLS for every sequential score prefix
     fPCR model("X", Y, data, fe_ls_elliptic(penalty, load));
+
+    // finish setup timing before the calibration and fitting stage
     const auto setup_end = std::chrono::steady_clock::now();
 
+    // print model size and calibration settings before starting the fit
     std::cout << "Starting fPCR fit: H=" << params.n_comp << ", calibration=" << params.calibration;
     if (params.calibration == "gcv") std::cout << ", " << params.lambda_grid.size() << " candidate lambdas";
     std::cout << std::endl;
@@ -103,6 +264,8 @@ int run_fpcr(
     if (params.calibration == "gcv") {
         if (params.gcv_seed == random_seed)
             throw std::runtime_error("fPCR GCV requires an explicit deterministic seed");
+
+        // estimate smooth components with exact SVD initialization and explicit EDF controls for GCV
         model.fit(
           params.n_comp,                  // number of retained components
           params.lambda_grid,             // candidate lambdas for principal-component smoothing
@@ -113,6 +276,7 @@ int run_fpcr(
           params.gcv_seed                 // deterministic seed for stochastic effective degrees of freedom
         );
     } else if (params.calibration == "fixed") {
+        // estimate all components with exact SVD initialization and the supplied fixed lambda
         model.fit(
           params.n_comp,                                    // number of retained components
           std::vector<double> {params.fixed_fpca_lambda},   // fixed lambda shared by all components
@@ -123,6 +287,8 @@ int run_fpcr(
     } else {
         throw std::runtime_error("calibration must be gcv or fixed");
     }
+
+    // finish solver timing after the component fit and all prefix-specific response regressions
     const auto fit_end = std::chrono::steady_clock::now();
 
     // export saved calibration diagnostics, prefix predictions and regression functions
@@ -132,132 +298,22 @@ int run_fpcr(
     );
 }
 
-/** @brief prepare and center brain observations, then run the selected functional regression model */
+/** @brief read the application settings and run fPLS or its fPCR alternative */
 int main(int argc, char* argv[]) {
     try {
-        // require a single command-line argument identifying the JSON parameter file
+        // read and validate the command-line parameter file
         if (argc != 2) {
             std::cerr << "Usage: " << argv[0] << " <params.json>\n";
             return 1;
         }
+        const auto params = read_parameters(read_parameter_file(argv[1]));
 
-        // parse the parameter file before starting native workflow timing
-        const json values = read_parameter_file(argv[1]);
-
-        // begin workflow timing before validating the typed application settings
-        const auto wall_start = std::chrono::steady_clock::now();
-
-        // read and validate data paths, centering, calibration, solver and output settings
-        const auto params = read_parameters(values);
-
-        // load training predictors with subjects in rows and mesh nodes in columns, together with the responses
-        const matrix_t X_raw = read_matrix(params.X_file);
-        const matrix_t Y = read_matrix(params.Y_file);
-
-        // read node coordinates, tetrahedral connectivity and boundary-node markers
-        const matrix_t nodes = read_matrix(params.nodes_file);
-        const matrix_t elements_source = read_matrix(params.elements_file);
-        const matrix_t boundary_source = read_matrix(params.boundary_file);
-
-        // report the training-data size before constructing the finite-element domain
-        std::cout << "- Loaded brain data: " << X_raw.rows() << " subjects, " << X_raw.cols() << " mesh nodes"
-                  << std::endl;
-
-        // check mesh input shapes and agreement between subjects, responses and observation nodes
-        if (nodes.cols() != 3 || elements_source.cols() != 4 || boundary_source.cols() != 1) {
-            throw std::runtime_error("invalid 3D mesh input dimensions");
-        }
-        if (X_raw.rows() != Y.rows() || X_raw.cols() != nodes.rows()) {
-            throw std::runtime_error("X, Y, and mesh-node dimensions do not agree");
-        }
-
-        // convert connectivity and boundary markers to the integer format required by the mesh constructor
-        Eigen::Matrix<int, Eigen::Dynamic, Eigen::Dynamic> elements = elements_source.cast<int>();
-        Eigen::Matrix<int, Eigen::Dynamic, Eigen::Dynamic> boundary = boundary_source.cast<int>();
-
-        // report mesh size before assembling the volumetric domain and function space
-        std::cout << "- Building tetrahedral FEM space: " << elements.rows() << " elements" << std::endl;
-
-        // define the volumetric domain and continuous piecewise-linear finite-element space
-        Triangulation<3, 3> domain(nodes, elements, boundary, cache_cells);
-        FeSpace space(domain, P1<1>);
-
-        // define trial and test functions for the variational smoothing forms
-        TrialFunction f(space);
-        TestFunction v(space);
-
-        // assemble the weak Laplacian operator for the elliptic smoothing penalties
-        const auto penalty = integral(domain)(dot(grad(f), grad(v)));
-
-        // define the homogeneous PDE load with zero forcing
-        ZeroField<3> forcing;
-        const auto load = integral(domain)(forcing * v);
-
-        // measurements coincide with mesh nodes, so no separate observation grid is needed
-        GeoFrame data(domain);
-        auto& layer = data.template insert_scalar_layer<POINT>("observations", MESH_NODES);
-
-        // begin functional-centering timing before preparing the mean smoother
-        const auto centering_start = std::chrono::steady_clock::now();
-
-        // build the elliptic smoother for the training-only mean with equal nodal weights
-        auto mean_penalty = fe_ls_elliptic(penalty, load);
-        fdapde::internals::fe_ls_elliptic mean_smoother;
-        mean_smoother.discretize(mean_penalty.get());
-        mean_smoother.analyze_data(data, vector_t::Ones(data[0].rows()).asDiagonal());
-
-        // report the candidate-grid size before calibrating the functional mean
-        std::cout << "- Fitting training-only functional mean by GCV over " << params.mean_lambda_grid.size()
-                  << " candidate lambda(s)" << std::endl;
-
-        // smooth the empirical training mean and select its lambda by GCV
-        const functional_mean_fit mean_fit = fit_functional_mean_gcv(
-          X_raw,                     // training predictors before functional centering
-          mean_smoother,             // elliptic smoother for the mean function
-          params.mean_lambda_grid,   // candidate lambdas for smoothing the empirical mean
-          params.mean_gcv_probes,    // number of Hutchinson probes for mean effective degrees of freedom
-          params.mean_gcv_seed       // seed for stochastic mean effective degrees of freedom
-        );
-
-        // subtract the same training-only smooth mean from each subject's predictor curve
-        const matrix_t X = X_raw.rowwise() - mean_fit.locations.transpose();
-
-        // require finite centered predictors before binding them to the model data layer
-        if (!X.allFinite()) throw std::runtime_error("functional-mean centered data are non-finite");
-
-        // store locations in rows and subjects in columns as required by GeoFrame
-        layer.load_blk("X", X.transpose());
-
-        // finish functional-centering timing once the centered observations have been loaded
-        const auto centering_end = std::chrono::steady_clock::now();
-
-        // report the selected mean smoothing parameter before exporting preprocessing diagnostics
-        std::cout << "- Functional mean completed: lambda=" << mean_fit.selected_lambda << std::endl;
-
-        // export the estimated functional mean and its GCV diagnostics
-        write_functional_mean_output(
-          params.output_dir,        // destination for the preprocessing outputs
-          mean_fit,                 // selected mean in coefficient and nodal form, with its EDF/GCV diagnostics
-          params.mean_lambda_grid   // candidate lambdas paired with the exported EDF and GCV values
-        );
-
-        // dispatch the model on the centered training observations
+        // dispatch fPLS as the base model, with fPCR as the alternative
         if (params.model_name == "R1_fPLS") {
-            return run_fpls(
-              params, space, data, X, Y,   // application settings, function space and centered training observations
-              penalty, load,               // variational forms for the direction and loading smoothers
-              mean_fit,                    // fitted functional mean and centering diagnostics
-              wall_start, centering_start, centering_end   // workflow and functional-centering timing checkpoints
-            );
+            return run_fpls(params);
+        } else {
+            return run_fpcr(params);
         }
-
-        // use smooth fPCA followed by score regression for the validated fPCR choice
-        return run_fpcr(
-          params, space, data, X, Y,   // application settings, function space and centered training observations
-          penalty, load,               // variational forms for the principal-component smoother
-          mean_fit,                    // fitted functional mean and centering diagnostics
-          wall_start, centering_start, centering_end   // workflow and functional-centering timing checkpoints
-        );
     } catch (const std::exception& error) {
         // report input, preprocessing or fitting failures through the existing nonzero exit status
         std::cerr << "brain application failed: " << error.what() << '\n';
