@@ -35,7 +35,8 @@ MAX_PARALLEL_CORES="${MULTITHREAD_CPUS:-}"
 if command -v sysctl >/dev/null 2>&1 && sysctl -n hw.physicalcpu >/dev/null 2>&1; then
   TOTAL_CORES=$(sysctl -n hw.physicalcpu)
 elif command -v nproc >/dev/null 2>&1; then
-  TOTAL_CORES=$(nproc)
+  # Ignore solver thread limits while respecting the process CPU allocation.
+  TOTAL_CORES=$(env -u OMP_NUM_THREADS -u OMP_THREAD_LIMIT nproc)
 else
   TOTAL_CORES=1
 fi
