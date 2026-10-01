@@ -30,6 +30,9 @@ The exact threshold is selected from the oriented fitted response by maximizing 
 
 ## Data
 
+The data source and preprocessing used to obtain these inputs are described in the article's
+“Application to functional connectivity data” section and the references cited there.
+
 The preprocessed inputs are private and are not distributed with this repository. `PATH_APPLICATION_DATA` must contain:
 
 | File | MD5 |

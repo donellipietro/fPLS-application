@@ -12,7 +12,7 @@
 /images
 /logs
 /queue
-/data/*
+/data
 /build
 /tmp
 /.fdapde-cpp
@@ -31,9 +31,4 @@
 # generated manuscript table products
 /paper-tables/csv
 
-# exceptions
-!/data/mesh/
-!/data/mesh/**
-!/data/local/
-!/data/local/.gitkeep
 .Rproj.user
