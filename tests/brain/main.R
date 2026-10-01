@@ -17,6 +17,7 @@ suppressMessages(library(glue))
 ## Load application helpers and cache checks ----
 source("src/utils/directories.R")
 source("src/utils/options.R")
+source("src/utils/process.R")
 source("tests/brain/config.R")
 source("tests/brain/utils/data_prep.R")
 source("tests/brain/utils/projection.R")
