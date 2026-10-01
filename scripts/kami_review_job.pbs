@@ -8,7 +8,7 @@ set -euo pipefail
 : "${PATH_APPLICATION_DATA:?PATH_APPLICATION_DATA is not set; submit with scripts/submit_kami_review.sh}"
 
 cd "${PBS_O_WORKDIR}"
-if [[ ! -f Makefile || ! -x tests/run_tests.sh ]]; then
+if [[ ! -f Makefile || ! -x tests/run_tests.sh || ! -x tests/run_tests_parallel.sh ]]; then
   echo "Error: submit the job from the fPLS-application repository root." >&2
   exit 1
 fi
@@ -47,6 +47,10 @@ if ! command -v Rscript >/dev/null 2>&1; then
   echo "Error: Rscript not found in the job environment; load R before submitting." >&2
   exit 1
 fi
+if ! command -v parallel >/dev/null 2>&1; then
+  echo "Error: GNU Parallel not found in the job environment; load it before submitting." >&2
+  exit 1
+fi
 for input in FEMbasis.Rds X_imputed.rds Ycl.rds; do
   if [[ ! -r "${PATH_APPLICATION_DATA}/${input}" ]]; then
     echo "Error: private application input missing or unreadable: ${PATH_APPLICATION_DATA}/${input}" >&2
@@ -74,12 +78,17 @@ CURRENT_STAGE="compile_all"
 make --no-print-directory compile_all PROFILE=hpc-torque \
   COMPILE_STRATEGY=local COMPILE_JOBS="${PBS_MULTI_CPUS}"
 
-# Aggregate the complete-data reference before starting its resampling comparisons.
-for analysis in h_stability slider_resampling fpcr_h20_separation; do
-  CURRENT_STAGE="brain/${analysis}"
-  printf '\n===== Running brain/%s serially =====\n' "${analysis}"
-  ./tests/run_tests.sh brain "${analysis}"
-done
+# Finish and aggregate the complete-data reference before starting any training-fold fits.
+CURRENT_STAGE="brain/h_stability"
+./tests/run_tests.sh brain h_stability
+
+# GNU Parallel runs independent folds with one solver thread per allocated CPU.
+CURRENT_STAGE="brain/slider_resampling"
+./tests/run_tests_parallel.sh brain slider_resampling
+
+# Run the complete-data fPCR comparator after every resampling worker has finished.
+CURRENT_STAGE="brain/fpcr_h20_separation"
+./tests/run_tests.sh brain fpcr_h20_separation
 
 CURRENT_STAGE="paper_tables"
 FPLS_RESULTS="${PATH_RESULTS}" make --no-print-directory application_paper_tables PROFILE=hpc-torque

@@ -41,8 +41,14 @@ else
   TOTAL_CORES=1
 fi
 
-# Calculate the number of cores to be used for parallel processing
-PARALLEL_CORES=$((TOTAL_CORES - 4))
+# Kami workers use the requested PBS allocation, capped by the process CPU affinity.
+# Local runs keep four cores free for interactive work.
+if [[ -n "${PBS_JOBID:-}" && "${PBS_MULTI_CPUS:-}" =~ ^[1-9][0-9]*$ ]]; then
+  PARALLEL_CORES="$TOTAL_CORES"
+  MAX_PARALLEL_CORES="$PBS_MULTI_CPUS"
+else
+  PARALLEL_CORES=$((TOTAL_CORES - 4))
+fi
 
 # Keep smoke tests usable on small or sandboxed machines.
 if [ "$PARALLEL_CORES" -lt 1 ]; then

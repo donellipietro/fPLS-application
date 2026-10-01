@@ -15,6 +15,10 @@ if ! command -v Rscript >/dev/null 2>&1; then
   echo "Error: Rscript not found in PATH; load the Kami R environment before submitting." >&2
   exit 1
 fi
+if ! command -v parallel >/dev/null 2>&1; then
+  echo "Error: GNU Parallel not found in PATH; load it before submitting." >&2
+  exit 1
+fi
 PATH_APPLICATION_DATA="$(Rscript -e 'source("config.R"); cat(get_config("hpc-torque")$PATH_APPLICATION_DATA)')"
 export PATH_APPLICATION_DATA
 for input in FEMbasis.Rds X_imputed.rds Ycl.rds; do
@@ -24,7 +28,7 @@ for input in FEMbasis.Rds X_imputed.rds Ycl.rds; do
   fi
 done
 
-# Use the paper's allocation: four compilation workers, one thread per model fit.
+# Reserve four CPUs for compilation and concurrent single-threaded training-fold fits.
 export PBS_MULTI_CPUS="${PBS_MULTI_CPUS:-4}"
 export PBS_MULTI_MEM="${PBS_MULTI_MEM:-32gb}"
 export PBS_MULTI_TIME="${PBS_MULTI_TIME:-72:00:00}"

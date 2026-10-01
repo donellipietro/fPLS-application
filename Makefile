@@ -205,7 +205,7 @@ run_test: ensure_env
 			"$$runner" "$(TEST_SUITE)" "$(TEST_NAME)"; \
 	fi
 
-## Select an idle Kami node and run all application analyses serially in one exclusive PBS job.
+## Select an idle Kami node for complete-data fits and parallel resampling in one exclusive PBS job.
 kami_review_submit:
 	@PBS_DRY_RUN="$(PBS_DRY_RUN)" \
 	PBS_MULTI_CPUS="$(PBS_MULTI_CPUS)" \

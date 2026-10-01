@@ -55,10 +55,12 @@ make kami_review_submit
 
 The script selects a completely idle node with the paper's 96 logical CPUs and at least
 500 GiB of RAM, and verifies its AMD EPYC 7413 processor before starting. It configures
-`hpc-torque`, builds the native driver, and runs `h_stability`, the 50 `slider_resampling`
-fits, and `fpcr_h20_separation` sequentially, with one computational thread per fit.
-Each analysis is aggregated before the next starts; the supplementary CSV table is generated
-after all analyses complete. Manuscript panels can then be generated locally from the saved fits.
+`hpc-torque` and builds the native driver. The complete-data `h_stability` fit runs alone
+and is aggregated first. The 50 `slider_resampling` fits then run in parallel, with up to
+`PBS_MULTI_CPUS` workers, bounded by the CPUs available to the job. Each fit uses one
+computational thread. After resampling and its aggregation finish, `fpcr_h20_separation`
+runs alone, followed by the supplementary CSV table. Manuscript panels can then be generated
+locally from the saved fits.
 
 The default request is four CPUs, 32 GB RAM, and 72 hours in the `test` queue, with
 `place=excl`. Override `PBS_MULTI_CPUS`, `PBS_MULTI_MEM`, `PBS_MULTI_TIME`, or `PBS_QUEUE`
