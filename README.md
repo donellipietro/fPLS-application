@@ -126,10 +126,7 @@ The native profiles were tested with the following reference environments:
 | `linux` | Ubuntu 24.04.5 LTS, ARM64, in Docker | GCC/G++ 13.3.0 | 4.3.3 | 3.4.0 |
 
 Profiles are also provided for Windows/WSL2 with Docker (`windows`), but this
-profile could not be tested. Additional profiles are available for Slurm with
-Apptainer/Singularity (`hpc-slurm`) and Torque/PBS (`hpc-torque`). Their compiler
-and R versions depend on the container or cluster installation. The native fdaPDE
-revisions are pinned in [`config.R`](config.R).
+profile could not be tested.
 
 The Linux native driver was compiled in the environment above. Running the full
 application requires the private inputs described in the Data section.
