@@ -56,8 +56,7 @@ requires Slurm and Apptainer or SingularityCE. `hpc-torque` submits jobs through
 
 `make build` automatically installs the missing R packages listed in the
 [installation script](src/installation/install_femR.R), and prepares the nlohmann/json
-headers and the pinned `fdaPDE-cpp` stack. The native revisions are pinned in
-[`config.R`](config.R): fdaPDE-cpp commit `d32e453` and core commit `472f9bd`.
+headers and the pinned `fdaPDE-cpp` stack.
 
 Additional software needed to generate manuscript panels is listed in the
 [figure guide](paper-figures/README.md#prerequisites).
@@ -116,3 +115,32 @@ The native driver uses public fdaPDE-cpp fPLS and fPCR models. GCV diagnostics c
 This repository starts from the finite-element basis, an already imputed predictor matrix, and group labels. It does not reconstruct upstream fMRI preprocessing, missing-value imputation, or selection of the seed region. The workflows are descriptive fitted-sample analyses and do not provide out-of-sample validation. Numerical reproduction requires the private preprocessed inputs and the pinned native fdaPDE stack.
 
 See the [analysis guide](tests/README.md) and [figure sources](paper-figures/README.md) for the application workflow and manuscript outputs.
+
+## Platform configuration and support
+
+The native profiles were configured with the following reference environments:
+
+| Profile | Platform | C++ compiler | R | Eigen |
+| --- | --- | --- | --- | --- |
+| `macos` | macOS 26.6.2, ARM64 | GCC/G++ 15.2.0 (Homebrew) | 4.3.3 | 3.4.0 |
+| `linux` | Ubuntu 24.04.5 LTS, ARM64, in Docker | GCC/G++ 13.3.0 | 4.3.3 | 3.4.0 |
+
+Profiles are also provided for Windows/WSL2 with Docker (`windows`), Slurm with
+Apptainer/Singularity (`hpc-slurm`), and Torque/PBS (`hpc-torque`). Their compiler
+and R versions depend on the container or cluster installation. The native fdaPDE
+revisions are pinned in [`config.R`](config.R).
+
+The Linux native driver was compiled in the environment above. Running the full
+application requires the private inputs described in the Data section.
+
+On Ubuntu/Debian, R packages compiled from source also need development libraries.
+Install these before `make build PROFILE=linux`:
+
+```sh
+sudo apt-get update
+sudo apt-get install -y build-essential r-base-dev libeigen3-dev \
+  libcurl4-openssl-dev libssl-dev libxml2-dev libuv1-dev cmake
+```
+
+This repository is maintained by Pietro Donelli. For questions or problems, contact
+[pietro.donelli@polimi.it](mailto:pietro.donelli@polimi.it).

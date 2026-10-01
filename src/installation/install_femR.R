@@ -18,3 +18,12 @@ install_lib <- if (length(user_libs)) user_libs[1] else .libPaths()[1]
 packages <- c("ggplot2", "glue", "htmlwidgets", "jsonlite", "plotly")
 missing <- packages[!vapply(packages, requireNamespace, quietly = TRUE, FUN.VALUE = logical(1))]
 if (length(missing)) install.packages(missing, lib = install_lib)
+
+# Package installation can report failures as warnings; verify the usable runtime.
+missing <- packages[!vapply(packages, requireNamespace, quietly = TRUE, FUN.VALUE = logical(1))]
+if (length(missing)) {
+  stop(
+    "Required R packages are unavailable: ", paste(missing, collapse = ", "),
+    ". Check the installation errors above.", call. = FALSE
+  )
+}
