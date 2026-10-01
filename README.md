@@ -19,15 +19,6 @@ The article and Supplementary Material use three analysis targets:
 - `slider_resampling`: runs 10 repeats of stratified five-fold delete-one-fold sampling, for 50 training-only R1-fPLS fits. Each fit re-estimates centering, response coding, regularization, and the intrinsic `H = 3` slider. Omitted subjects define the perturbation and are not used for fitted quantities or metrics.
 - `fpcr_h20_separation`: fits the complete-data fPCR comparator through `H = 20` and reports prefix separation with its fPCA GCV diagnostics.
 
-For retained scores `T_H`, component standard deviations `D_H`, X loadings `R_H`, and response loadings `nu_H`, the intrinsic fPLS direction and functional slider are
-
-```text
-q_H = D_H nu_H / ||D_H nu_H||
-f_H = R_H D_H q_H.
-```
-
-The exact threshold is selected from the oriented fitted response by maximizing sensitivity plus specificity. At `H = 3`, it is transformed into standardized intrinsic-slider coordinates and saved with the subject scores.
-
 ## Data
 
 The data source and preprocessing used to obtain these inputs are described in the article's
