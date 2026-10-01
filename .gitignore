@@ -28,6 +28,9 @@
 /paper-figures/layouts/*
 !/paper-figures/layouts/*.af
 
+# generated manuscript table products
+/paper-tables/csv
+
 # exceptions
 !/data/mesh/
 !/data/mesh/**

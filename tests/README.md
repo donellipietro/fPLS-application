@@ -28,16 +28,17 @@ as its reference. Each resampling fit re-estimates preprocessing and regularizat
 only its training subjects.
 
 Aggregates are written to `results/brain/aggregate/<TEST_NAME>/` and figures to
-`images/brain/aggregate/<TEST_NAME>/`. To reproduce the supplementary comparison across all
-retained component counts from the saved six-component resampling fits:
+`images/brain/aggregate/<TEST_NAME>/`. After completing `h_stability` and `slider_resampling`,
+generate the supplementary comparison across all retained component counts:
 
 ```sh
-Rscript tests/brain/postprocess_slider_resampling_by_H.R results results/brain/aggregate/slider_resampling_by_H
+make application_paper_tables
 ```
 
-If results are stored elsewhere, replace the first `results` argument with the directory
-containing `brain/`. The resulting `summary_by_H.csv` contains the median and quartiles of slider similarity
-(`rho_H`) for both references: the complete-data `H = 3` slider and each fold's own `H = 3`
-slider. The 50 overlapping training sets provide descriptive stability summaries.
+The CSV table is written to `paper-tables/csv/`. It combines the complete-data similarity
+with the median and quartiles across the 50 training fits, using both the complete-data
+`H = 3` slider and each fold's own `H = 3` slider as references. See the
+[table guide](../paper-tables/README.md) for inputs, outputs and an alternative results directory.
+The 50 overlapping training sets provide descriptive stability summaries.
 
 See [figure sources](../paper-figures/README.md) for the application panels.

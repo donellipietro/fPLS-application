@@ -48,39 +48,46 @@ Generated data, results, images, logs, queues, build products, libraries, and pr
 Install the following on your machine before running the workflow:
 
 - GNU Make, Bash, Git and R;
-- a C++20 compiler and Eigen for the `macos`, `linux` and `hpc-torque` profiles;
-- GNU Parallel and `bc` for parallel execution.
-
-The `windows` profile uses Docker Desktop with WSL2 integration. The `hpc-slurm` profile
-requires Slurm and Apptainer or SingularityCE. `hpc-torque` submits jobs through Torque/PBS.
+- a C++20 compiler and Eigen for native compilation with the `macos` or `linux` profile;
+- GNU Parallel and `bc` for parallel execution;
+- Docker Desktop with WSL2 integration for the `windows` profile.
 
 `make build` automatically installs the missing R packages listed in the
 [installation script](src/installation/install_femR.R), and prepares the nlohmann/json
-headers and the pinned `fdaPDE-cpp` stack.
+headers and the pinned `fdaPDE-cpp` stack. For the `windows` profile,
+the build also prepares the configured Docker image.
 
 Additional software needed to generate manuscript panels is listed in the
 [figure guide](paper-figures/README.md#prerequisites).
 
+For local execution, choose `macos` on macOS, `linux` on Linux, or `windows` on Windows.
+The Linux profile uses `gcc`, `g++`, and Eigen in `/usr/include/eigen3`; override `CC`, `CXX`,
+or `PATH_EIGEN_INCLUDE` if your installation uses different paths. Inspect a profile with:
+
+```sh
+make config PROFILE=macos
+```
+
 ## Setup and execution
 
-Choose `macos` on macOS, `linux` on Linux, `windows` under WSL2, or the matching
-`hpc-slurm` or `hpc-torque` cluster profile. Run the build from the repository root;
-it saves the selected profile in `.env`, and subsequent commands reuse it:
+Select a profile when preparing the runtime. The build saves it in `.env`, and subsequent
+commands reuse it. Run from the repository root:
 
 ```sh
 make build PROFILE=macos
 ```
 
-The `macos` profile uses Homebrew GCC 15 and Eigen paths; `linux` uses system GCC and
-`/usr/include/eigen3`. Override `CC`, `CXX`, or `PATH_EIGEN_INCLUDE` if needed.
-The build prepares the configured container for `windows` and `hpc-slurm`.
-
+Use `PROFILE=linux` or `PROFILE=windows` for the corresponding platform.
 `TEST_SUITE=brain` selects the application suite, and `TEST_NAME` selects an analysis
-target. `make run_test` automatically compiles the required native executables:
+target or `all` to run and aggregate every analysis in the suite separately.
+`make run_test` automatically compiles the selected suite before execution:
 
 ```sh
 # Fit the complete-data R1-fPLS model through H = 6
 make run_test TEST_SUITE=brain TEST_NAME=h_stability
+
+# Run all analyses in the brain suite
+make run_test TEST_SUITE=brain TEST_NAME=all
 ```
 
 See the [analysis guide](tests/README.md) for the resampling and fPCR commands. Run
@@ -101,14 +108,16 @@ manuscript panels from the repository root:
 make application_figure_panels
 ```
 
-See the [figure guide](paper-figures/README.md) for output locations and further options.
-The [analysis guide](tests/README.md) also explains how to generate the supplementary
-slider-similarity table from the 50 saved resampling fits. These are training-fit stability
-summaries; the overlapping fits are not independent replicates.
+Once `h_stability` and all 50 `slider_resampling` fits are complete, generate the supplementary
+slider-similarity table from the saved results:
 
-## Native regression outputs
+```sh
+make application_paper_tables
+```
 
-The native driver uses public fdaPDE-cpp fPLS and fPCR models. GCV diagnostics contain the candidate evaluations and EDF saved during calibration, with no diagnostic refit. Application output schema 4 renames `replay_minimum` to `grid_minimum` and exports fPCR predictions, beta coefficients and errors for every response column. Scalar classification metrics retain their original interpretation. See [the native output schema](cpp/brain/OUTPUT_SCHEMA.md) for column order, telemetry and timing details.
+See the [figure guide](paper-figures/README.md) and [table guide](paper-tables/README.md)
+for output locations and further options. The table reports training-fit stability summaries;
+the overlapping fits are not independent replicates.
 
 ## Reproducibility limits
 

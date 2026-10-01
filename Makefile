@@ -77,7 +77,7 @@ TEST_EXECUTION_STRATEGY := $(call config_value,TEST_EXECUTION_STRATEGY)
 COMPILE_STRATEGY := $(call config_value,COMPILE_STRATEGY)
 
 .PHONY: all help config write_env create_dirs install install_femR build ensure_env \
-        compile compile_all run_test application_figure_panels \
+        compile compile_all run_test application_figure_panels application_paper_tables \
         clean_tmp clean_compiled clean clean_test distclean
 
 all: build
@@ -86,6 +86,11 @@ all: build
 application_figure_panels:
 	@$(RSCRIPT) paper-figures/scripts/A_latent_scores.R
 	@PVPYTHON="$(PVPYTHON)" $(RSCRIPT) paper-figures/scripts/A_slider.R
+
+## Regenerate the CSV table used by the application Supplementary Material.
+application_paper_tables:
+	@set -e; if [ -f .env ]; then set -a; . ./.env; set +a; fi; \
+	$(RSCRIPT) paper-tables/scripts/generate_slider_similarity_table.R
 
 ## Print one runtime profile.
 config:
@@ -229,6 +234,7 @@ distclean: clean clean_compiled
 	@read -p "Continue? [y/n]: " confirm && [ "$$confirm" = "y" ]
 	@$(RSCRIPT) config.R --profile "$(TESTBENCH_PROFILE)" --remove-links
 	@$(RM) -r "$(PATH_IMAGES)" "$(PATH_RESULTS)" "$(PATH_TEST_DATA)" "$(PATH_TMP)" "$(PATH_REPO)/libraries"
+	@$(RM) -r "$(PATH_REPO)/paper-tables/csv"
 	@$(RM) .env
 
 ## Show available targets.
