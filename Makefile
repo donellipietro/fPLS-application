@@ -44,6 +44,7 @@ PBS_MULTI_TIME ?=
 PBS_MAX_JOBS ?=
 PBS_QUEUE ?=
 PBS_ACCOUNT ?=
+PBS_EXCLUSIVE_RESOURCE ?=
 PBS_AGGREGATE ?= 1
 PBS_COMPILE_CPUS ?=
 PBS_COMPILE_MEM ?=
@@ -77,7 +78,7 @@ TEST_EXECUTION_STRATEGY := $(call config_value,TEST_EXECUTION_STRATEGY)
 COMPILE_STRATEGY := $(call config_value,COMPILE_STRATEGY)
 
 .PHONY: all help config write_env create_dirs install install_femR build ensure_env \
-        compile compile_all run_test application_figure_panels application_paper_tables \
+        compile compile_all run_test kami_review_submit application_figure_panels application_paper_tables \
         clean_tmp clean_compiled clean clean_test distclean
 
 all: build
@@ -203,6 +204,17 @@ run_test: ensure_env
 		PBS_ACCOUNT="$(PBS_ACCOUNT)" PBS_AGGREGATE="$(PBS_AGGREGATE)" SMOKE_TEST="$(SMOKE_TEST)" \
 			"$$runner" "$(TEST_SUITE)" "$(TEST_NAME)"; \
 	fi
+
+## Select an idle Kami node and run all application analyses serially in one exclusive PBS job.
+kami_review_submit:
+	@PBS_DRY_RUN="$(PBS_DRY_RUN)" \
+	PBS_MULTI_CPUS="$(PBS_MULTI_CPUS)" \
+	PBS_MULTI_MEM="$(PBS_MULTI_MEM)" \
+	PBS_MULTI_TIME="$(PBS_MULTI_TIME)" \
+	PBS_QUEUE="$(PBS_QUEUE)" \
+	PBS_ACCOUNT="$(PBS_ACCOUNT)" \
+	PBS_EXCLUSIVE_RESOURCE="$(PBS_EXCLUSIVE_RESOURCE)" \
+		bash scripts/submit_kami_review.sh
 
 clean_tmp:
 	@$(RM) -r "$(PATH_TMP)"

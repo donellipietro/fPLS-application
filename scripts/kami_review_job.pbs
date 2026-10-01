@@ -1,0 +1,88 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+: "${PBS_JOBID:?This script must run inside one Torque/PBS job}"
+: "${PBS_O_WORKDIR:?PBS_O_WORKDIR is not set}"
+: "${KAMI_RUN_DIR:?KAMI_RUN_DIR is not set; submit with scripts/submit_kami_review.sh}"
+: "${PBS_MULTI_CPUS:?PBS_MULTI_CPUS is not set}"
+: "${PATH_APPLICATION_DATA:?PATH_APPLICATION_DATA is not set; submit with scripts/submit_kami_review.sh}"
+
+cd "${PBS_O_WORKDIR}"
+if [[ ! -f Makefile || ! -x tests/run_tests.sh ]]; then
+  echo "Error: submit the job from the fPLS-application repository root." >&2
+  exit 1
+fi
+mkdir -p "${KAMI_RUN_DIR}"
+
+CURRENT_STAGE="startup"
+STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+finish() {
+  local status=$?
+  trap - EXIT
+  {
+    printf 'job_id=%s\n' "${PBS_JOBID}"
+    printf 'status=%s\n' "$([[ "${status}" -eq 0 ]] && printf success || printf failed)"
+    printf 'last_stage=%s\n' "${CURRENT_STAGE}"
+    printf 'started_at=%s\n' "${STARTED_AT}"
+    printf 'finished_at=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    printf 'git_commit=%s\n' "$(git rev-parse HEAD 2>/dev/null || printf unknown)"
+  } > "${KAMI_RUN_DIR}/final_status.txt"
+  exit "${status}"
+}
+trap finish EXIT
+
+export OMP_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
+export VECLIB_MAXIMUM_THREADS=1
+export SMOKE_TEST=0
+# Reproduce the supplementary design: ten repeats of stratified five-fold sampling.
+export FPLS_CV_FOLDS=5
+export FPLS_CV_REPEATS=10
+
+printf 'Application campaign job: %s\nHost: %s\nStarted: %s\n' \
+  "${PBS_JOBID}" "$(hostname)" "${STARTED_AT}"
+
+CURRENT_STAGE="input_check"
+if ! command -v Rscript >/dev/null 2>&1; then
+  echo "Error: Rscript not found in the job environment; load R before submitting." >&2
+  exit 1
+fi
+for input in FEMbasis.Rds X_imputed.rds Ycl.rds; do
+  if [[ ! -r "${PATH_APPLICATION_DATA}/${input}" ]]; then
+    echo "Error: private application input missing or unreadable: ${PATH_APPLICATION_DATA}/${input}" >&2
+    exit 1
+  fi
+done
+
+# PBS exposes node capacity, so verify the actual paper CPU before any build or fit.
+CURRENT_STAGE="hardware_check"
+LC_ALL=C lscpu > "${KAMI_RUN_DIR}/node-info.txt"
+if ! grep -q 'AMD EPYC 7413' "${KAMI_RUN_DIR}/node-info.txt"; then
+  echo "Error: CPU differs from the paper's AMD EPYC 7413; campaign not started." >&2
+  exit 1
+fi
+
+CURRENT_STAGE="build"
+FDAPDE_CPP_MANAGED=true make --no-print-directory build PROFILE=hpc-torque
+
+# Load the freshly written profile, including the cluster's R library paths.
+set -a
+source .env
+set +a
+
+CURRENT_STAGE="compile_all"
+make --no-print-directory compile_all PROFILE=hpc-torque \
+  COMPILE_STRATEGY=local COMPILE_JOBS="${PBS_MULTI_CPUS}"
+
+# Aggregate the complete-data reference before starting its resampling comparisons.
+for analysis in h_stability slider_resampling fpcr_h20_separation; do
+  CURRENT_STAGE="brain/${analysis}"
+  printf '\n===== Running brain/%s serially =====\n' "${analysis}"
+  ./tests/run_tests.sh brain "${analysis}"
+done
+
+CURRENT_STAGE="paper_tables"
+FPLS_RESULTS="${PATH_RESULTS}" make --no-print-directory application_paper_tables PROFILE=hpc-torque
+
+CURRENT_STAGE="complete"
+printf '\nApplication campaign completed successfully.\n'
