@@ -32,14 +32,7 @@ The exact threshold is selected from the oriented fitted response by maximizing 
 
 The data source and preprocessing used to obtain these inputs are described in the article's
 “Application to functional connectivity data” section and the references cited there.
-
-The preprocessed inputs are private and are not distributed with this repository. `PATH_APPLICATION_DATA` must contain:
-
-| File | MD5 |
-| --- | --- |
-| `FEMbasis.Rds` | `59433e991190b029f6f190b00c4f878a` |
-| `X_imputed.rds` | `bf40b1320a4b0b115117d922ac2d08c3` |
-| `Ycl.rds` | `e99aba962f10e0384d1897365a028bca` |
+The preprocessed inputs are private and are not distributed with this repository.
 
 The default path is `data/brain` relative to the repository. If the inputs live elsewhere,
 prefix the build command below with `PATH_APPLICATION_DATA=/path/to/brain-data`.
