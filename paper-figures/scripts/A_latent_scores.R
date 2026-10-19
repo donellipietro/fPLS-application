@@ -78,25 +78,46 @@ latent_scores <- data.frame(t1 = score_data$z1, t2 = score_data$z2, t3 = score_d
                             group = factor(score_data$group, levels = names(colours)))
 normal <- slider$unit_standardized_normal
 intercept <- -threshold
-plane <- expand.grid(
-  t1 = seq(min(latent_scores$t1), max(latent_scores$t1), length.out = 20L),
-  t2 = seq(min(latent_scores$t2), max(latent_scores$t2), length.out = 20L)
-)
-plane$t3 <- -(normal[1] * plane$t1 + normal[2] * plane$t2 + intercept) / normal[3]
-plane <- plane[plane$t3 >= min(latent_scores$t3) & plane$t3 <= max(latent_scores$t3), , drop = FALSE]
-if (nrow(plane) < 3L) stop("The clipped boundary plane has fewer than three vertices.")
+score_matrix <- as.matrix(latent_scores[, c("t1", "t2", "t3")])
+bounds <- apply(score_matrix, 2L, range)
+plane_center <- colMeans(bounds)
+plane_center <- plane_center - (sum(normal * plane_center) + intercept) * normal
+# Use orthogonal in-plane directions so the four corners form a rectangle.
+horizontal <- c(-normal[2], normal[1], 0)
+horizontal <- horizontal / sqrt(sum(horizontal^2))
+vertical <- c(-normal[3] * horizontal[2], normal[3] * horizontal[1],
+              normal[1] * horizontal[2] - normal[2] * horizontal[1])
+basis <- cbind(horizontal, vertical)
+box_corners <- as.matrix(expand.grid(lapply(seq_len(3L), function(j) bounds[, j])))
+half_size <- apply(abs(sweep(box_corners, 2L, plane_center) %*% basis), 2L, max)
+offsets <- rbind(c(-1, -1), c(1, -1), c(1, 1), c(-1, 1)) %*% diag(half_size) %*% t(basis)
+plane <- sweep(offsets, 2L, plane_center, "+")
+edges <- plane[c(2L, 3L, 4L, 1L), ] - plane
+stopifnot(max(abs(plane %*% normal + intercept)) < 1e-10,
+          max(abs(rowSums(edges * edges[c(2L, 3L, 4L, 1L), ]))) < 1e-10)
+plane <- setNames(as.data.frame(plane), c("t1", "t2", "t3"))
 latent_plot <- plot_ly(latent_scores, x = ~t1, y = ~t2, z = ~t3, color = ~group,
                          colors = unname(colours), marker = list(size = 8), showlegend = FALSE) |>
   add_markers() |>
   add_trace(data = plane, x = ~t1, y = ~t2, z = ~t3, type = "mesh3d",
+            i = c(0L, 0L), j = c(1L, 2L), k = c(2L, 3L),
             intensity = rep(0.5, nrow(plane)), opacity = 0.5,
-            colorscale = list(c(0, "grey"), c(1, "grey")), showscale = FALSE,
+            colorscale = list(c(0, "grey"), c(1, "grey")),
+            showscale = FALSE,
             hoverinfo = "skip", inherit = FALSE) |>
   layout(margin = list(l = 0, r = 0, b = 0, t = 0), showlegend = FALSE,
-         scene = list(camera = list(eye = list(x = 1.55, y = -0.55, z = 0.65)),
-                      xaxis = list(title = "", showticklabels = FALSE),
-                      yaxis = list(title = "", showticklabels = FALSE),
-                      zaxis = list(title = "", showticklabels = FALSE)))
+         scene = list(camera = list(
+                        eye = list(x = 1.6171387939700241, y = -1.533153007625624, z = -0.09033674289559722),
+                        up = list(x = -0.01795006102026315, y = 0.039932337130336844, z = -0.9990411421761758),
+                        center = list(x = 0, y = 0, z = 0),
+                        projection = list(type = "perspective")),
+                      # Fix the original score ranges so the larger plane does not zoom out the points.
+                      xaxis = list(title = "", showticklabels = FALSE,
+                                   range = bounds[, 1L] + c(-1, 1) * diff(bounds[, 1L]) / 32),
+                      yaxis = list(title = "", showticklabels = FALSE,
+                                   range = bounds[, 2L] + c(-1, 1) * diff(bounds[, 2L]) / 32),
+                      zaxis = list(title = "", showticklabels = FALSE,
+                                   range = bounds[, 3L] + c(-1, 1) * diff(bounds[, 3L]) / 32)))
 write_plotly_pdf(latent_plot, file.path(panel_dir, "latent_score_space.pdf"))
 write_plotly_html(latent_plot, file.path(panel_dir, "latent_score_space.html"))
 
@@ -108,7 +129,7 @@ density_plot <- ggplot(score_data, aes(centered_slider, fill = group, colour = g
   theme(legend.position = "none", axis.title = element_blank(), axis.text.y = element_blank(),
         axis.ticks.y = element_blank(), axis.text.x = element_text(colour = "black"),
         axis.ticks.x = element_line(), plot.margin = margin(3, 4, 3, 4, "pt"))
-write_pdf(file.path(panel_dir, "projected_score_density.pdf"), 2.80, 2.55, function() print(density_plot))
+write_pdf(file.path(panel_dir, "projected_score_density.pdf"), 2.80, 57 / 25.4, function() print(density_plot))
 
 write_pdf(file.path(panel_dir, "legend.pdf"), 1.25, 0.75, function() {
   grid.newpage(); grid.rect(gp = gpar(fill = "white", col = "black", lwd = 0.8))
