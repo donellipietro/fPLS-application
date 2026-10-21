@@ -41,12 +41,12 @@ application_profile <- function(
     PATH_EIGEN_INCLUDE = Sys.getenv("PATH_EIGEN_INCLUDE", unset = eigen_include),
     FDAPDE_CPP_REPOSITORY = fdapde_repository,
     FDAPDE_CORE_REPOSITORY = fdapde_core_repository,
-    FDAPDE_CPP_BRANCH = Sys.getenv("FDAPDE_CPP_BRANCH", unset = "develop_fPLS"),
+    FDAPDE_CPP_BRANCH = Sys.getenv("FDAPDE_CPP_BRANCH", unset = "stable"),
     FDAPDE_CPP_COMMIT = Sys.getenv(
-      "FDAPDE_CPP_COMMIT", unset = "3fec556b082b0f774d3eded09809545ceeb838e2"
+      "FDAPDE_CPP_COMMIT", unset = "0f4d80d20196a46ead83f313b31cc37605c00560"
     ),
     FDAPDE_CORE_COMMIT = Sys.getenv(
-      "FDAPDE_CORE_COMMIT", unset = "329d02c95880a92254c66542f8f3f8b3a53e1cd5"
+      "FDAPDE_CORE_COMMIT", unset = "4c59cdb20f45575fc11af9742c52665fcee14e94"
     ),
     FDAPDE_CPP_MANAGED = Sys.getenv("FDAPDE_CPP_MANAGED", unset = "true"),
     # choose host execution by default; container profiles override these image settings
